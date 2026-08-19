@@ -1,0 +1,1009 @@
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #dfe3e8;
+  /* Lighter than --border: row separators should recede, not draw a grid. */
+  --row-line: #eef1f4;
+  --text: #1b1f24;
+  --muted: #6b7280;
+  --accent: #2563eb;
+  --new: #b45309;
+  --pending: #1d4ed8;
+  --resolved: #15803d;
+  --danger: #b91c1c;
+  --emergency: #b91c1c;
+  --urgent: #b45309;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    16px / 1.5 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  /* Stop iOS from re-scaling text on rotation. */
+  -webkit-text-size-adjust: 100%;
+}
+
+.page {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1rem 4rem;
+  /* Keep content clear of notches and home indicators. */
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(4rem, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.page-wide {
+  /* The seven-column table pins every column but the name, so the console
+     needs the extra width to keep names and notes off three lines. */
+  max-width: 80rem;
+}
+
+.page-narrow {
+  max-width: 24rem;
+}
+
+.staff-link {
+  margin: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.signin-back {
+  margin: 0;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+a {
+  color: var(--accent);
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.subtle {
+  color: var(--muted);
+  margin: 0.25rem 0 0;
+}
+
+/* Reads as "who am I", not as another entry field. */
+.identity-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.identity-bar input {
+  flex: 0 1 14rem;
+  width: auto;
+}
+
+.identity-hint {
+  margin: 0;
+  flex: 1 1 12rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.head-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* "Clear all" wipes the board; keep it off the elbow of "Sign out". */
+.head-actions .danger {
+  margin-left: 0.5rem;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.card h1,
+.card h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+}
+
+label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+input,
+select,
+textarea {
+  /* Must stay >= 16px or iOS Safari zooms the page on focus. */
+  font: inherit;
+  padding: 0.6rem 0.7rem;
+  min-height: 2.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  width: 100%;
+}
+
+/* Two fields per line where they read as a pair, stacking on narrow screens. */
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1 1 12rem;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+textarea {
+  resize: vertical;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  padding: 0.55rem 0.9rem;
+  min-height: 2.75rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  /* Removes the double-tap-to-zoom delay on touch devices. */
+  touch-action: manipulation;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.secondary {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+button.danger {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--danger);
+}
+
+.link-button {
+  background: none;
+  color: var(--accent);
+  padding: 0;
+  text-decoration: underline;
+  align-self: flex-start;
+}
+
+.error {
+  color: var(--danger);
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.counter {
+  margin: -0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.counter-full {
+  color: var(--new);
+  font-weight: 600;
+}
+
+/* Confirmation modal */
+
+.modal {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 1.5rem;
+  max-width: 26rem;
+  width: calc(100% - 2rem);
+  margin: auto;
+}
+
+.modal::backdrop {
+  background: rgb(0 0 0 / 45%);
+}
+
+.modal-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.modal-body {
+  margin: 0 0 1.25rem;
+  color: var(--muted);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+button.danger-solid {
+  background: var(--danger);
+  color: #fff;
+}
+
+@media (max-width: 480px) {
+  .modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  /* Three-button dialogs read top-to-bottom instead, so the safe first step
+     leads and the destructive one sits last. */
+  .modal-actions-ordered {
+    flex-direction: column;
+  }
+
+  .modal-actions button {
+    width: 100%;
+  }
+}
+
+/* Now-serving display */
+
+.now-serving {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  text-align: center;
+  display: flex;
+  justify-content: space-around;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.now-serving > div {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.now-serving-label {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.now-serving-number {
+  margin: 0.15rem 0 0;
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+}
+
+/* User ticket */
+
+.ticket {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--pending);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ticket-new {
+  border-left-color: var(--new);
+}
+
+.ticket-resolved {
+  border-left-color: var(--resolved);
+}
+
+.ticket-number {
+  margin: 0;
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ticket-name {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.ticket-status {
+  margin: 0;
+  color: var(--muted);
+}
+
+.offline-banner {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  background: #fff4e5;
+  border: 1px solid #f0c48a;
+  color: #8a5200;
+  font-size: 0.9rem;
+}
+
+/* Louder than the offline banner: this one wants someone to act on it. */
+.alert-banner {
+  margin: 0;
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  background: #fdecec;
+  border: 1px solid #e5a3a3;
+  border-left: 4px solid #c0392b;
+  color: #7d2620;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.error-detail {
+  margin: -0.35rem 0 0;
+  color: #8a5200;
+  font-size: 0.85rem;
+}
+
+.ticket-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-top: 0.35rem;
+}
+
+.queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.queue-list li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.queue-number {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 2.5rem;
+}
+
+.queue-name {
+  flex: 1;
+}
+
+.queue-list .is-me {
+  font-weight: 700;
+}
+
+.badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.badge-new {
+  color: var(--new);
+}
+
+.badge-pending {
+  color: var(--pending);
+}
+
+.badge-resolved {
+  color: var(--resolved);
+}
+
+/* An unfinished row would go into the export half-empty, so it is marked
+   where the eye already goes for the entry number. */
+.incomplete-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-left: 0.35rem;
+  vertical-align: 0.1rem;
+  border-radius: 50%;
+  background: var(--new);
+}
+
+.case-type {
+  font-size: 0.85rem;
+}
+
+/* A wait this long is the reason to re-triage, so it should catch the eye. */
+.wait-long {
+  font-weight: 700;
+  color: var(--new);
+}
+
+/* Triage */
+
+.triage-select {
+  min-height: 2.25rem;
+  padding: 0.25rem 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.triage-emergency {
+  color: var(--emergency);
+  border-color: var(--emergency);
+}
+
+.triage-urgent {
+  color: var(--urgent);
+}
+
+.appointment-flag {
+  /* Wraps inside the nowrap .cell-when, which only needs to keep the date
+     and the time each on their own line. */
+  white-space: normal;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent);
+}
+
+.ticket-appointment {
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.booking-form {
+  margin-bottom: 1rem;
+}
+
+/* Narrowing the three lists at once: the sections already split by status,
+   so this filters on the things they don't. */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.filter-search {
+  flex: 1 1 16rem;
+  width: auto;
+}
+
+.filter-select {
+  flex: 0 1 12rem;
+  width: auto;
+}
+
+.filter-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.filter-check input {
+  width: auto;
+  min-height: 0;
+}
+
+.filter-clear {
+  min-height: 2.25rem;
+  padding: 0.35rem 0.7rem;
+}
+
+.filter-count {
+  margin: 0;
+  flex: 1 1 100%;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Admin table */
+
+.entries {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  /* Fixed layout keeps every column the same width whether or not an entry
+     has notes, and keeps the active and resolved tables aligned with each
+     other since they are separate <table> elements. */
+  table-layout: fixed;
+}
+
+.entries th,
+.entries td {
+  text-align: left;
+  padding: 0.7rem 0.75rem;
+  /* One light rule between rows; no grid, no column lines. */
+  border-bottom: 1px solid var(--row-line);
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+/* Column widths: name takes the slack, everything else is pinned. */
+.entries th:nth-child(1) {
+  width: 5rem;
+}
+
+.entries th:nth-child(3) {
+  width: 8.5rem;
+}
+
+/* Fits the widest triage option ("Emergency") plus the native dropdown arrow. */
+.entries th:nth-child(4) {
+  width: 8.25rem;
+}
+
+/* Wide enough for the longest badge ("Being helped") without overflowing. */
+.entries th:nth-child(5) {
+  width: 9rem;
+}
+
+.entries th:nth-child(6) {
+  width: 8rem;
+}
+
+.entries th:nth-child(7) {
+  width: 6rem;
+}
+
+/* Holds all three action buttons on one line at their fixed widths. */
+.entries th:nth-child(8) {
+  width: 19.5rem;
+}
+
+.entries th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: none;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4rem;
+}
+
+.entries tr:last-child td {
+  border-bottom: none;
+}
+
+.row-resolved {
+  color: var(--muted);
+}
+
+.cell-name {
+  font-weight: 600;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.page > section {
+  margin-top: 0.5rem;
+}
+
+.section-heading {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.section-head .section-heading {
+  margin: 0;
+}
+
+.empty-note {
+  margin: 0;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+}
+
+/* Two different voices under one name: what the visitor asked for, and what
+   staff wrote about it. Labelled so they are never confused. */
+.visitor-note,
+.admin-note-preview {
+  display: block;
+  font-weight: 400;
+  font-size: 0.88rem;
+  margin-top: 0.3rem;
+  padding-left: 0.55rem;
+  border-left: 2px solid;
+}
+
+.visitor-note::before,
+.admin-note-preview::before {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.visitor-note {
+  color: var(--text);
+  border-left-color: #cfd6dd;
+}
+
+.visitor-note::before {
+  content: "Asked for";
+}
+
+.admin-note-preview {
+  color: var(--muted);
+  font-style: italic;
+  border-left-color: var(--accent);
+}
+
+.admin-note-preview::before {
+  content: "Staff note";
+  font-style: normal;
+}
+
+.note-editor-row td {
+  background: var(--bg);
+  padding: 0.85rem 0.75rem 1rem;
+}
+
+.note-editor-title {
+  margin: 0 0 0.6rem;
+  font-weight: 700;
+}
+
+.note-editor-row label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.note-editor-row .helper-input {
+  max-width: 18rem;
+  margin-bottom: 0.75rem;
+}
+
+/* The editor is a form inside a very wide table; a full-bleed textarea would
+   run far past a comfortable reading measure. */
+.note-editor-row textarea,
+.note-editor-row .counter,
+.note-editor-actions {
+  max-width: 44rem;
+}
+
+.note-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.note-editor-actions .counter {
+  margin: 0 auto 0 0;
+  text-align: left;
+}
+
+.cell-when {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.cell-date {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.actions-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.cell-actions button {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+/* Fixed widths per action so the column does not reflow when a label changes
+   ("Start helping" -> "Mark helped" -> "Reopen"). Sized to the longest label. */
+.action-status {
+  min-width: 6.75rem;
+}
+
+.action-note {
+  min-width: 5.25rem;
+}
+
+.action-remove {
+  min-width: 4.75rem;
+}
+
+/* With a mouse the 44px touch target is unnecessary bulk in a dense table. */
+@media (pointer: fine) {
+  .cell-actions button {
+    min-height: 2rem;
+    padding: 0.3rem 0.5rem;
+  }
+}
+
+/* Below this width the table collapses into one card per entry: the seven
+   pinned columns take ~1020px, so under ~1220px the name column has no room
+   left and fixed layout squeezes it and the notes down to nothing. */
+@media (max-width: 1220px) {
+  .entries,
+  .entries tbody,
+  .entries tr,
+  .entries td {
+    display: block;
+  }
+
+  .entries {
+    border: none;
+    background: none;
+    overflow: visible;
+  }
+
+  .entries thead {
+    display: none;
+  }
+
+  .entries tr {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.85rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .entries td {
+    border: none;
+    padding: 0.15rem 0;
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+
+  .entries td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 5.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+  }
+
+  /* Number and name read as the card's title instead of labelled fields. */
+  .entries .cell-id {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--muted);
+    padding-bottom: 0;
+  }
+
+  /* Block, not flex: the name and its notes must stack, not sit side by side. */
+  .entries .cell-name {
+    display: block;
+    font-size: 1.2rem;
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+  }
+
+  .entries .cell-name .visitor-note,
+  .entries .cell-name .admin-note-preview {
+    font-size: 0.85rem;
+  }
+
+  /* Every other card field is short; a full-bleed select would tower over them. */
+  .entries .triage-select {
+    max-width: 12rem;
+  }
+
+  /* The note editor is a full-width form, not a labelled field row. */
+  .note-editor-row {
+    margin-top: -0.5rem;
+  }
+
+  .note-editor-row td {
+    display: block;
+    padding: 0.85rem 0;
+  }
+
+  .note-editor-row textarea {
+    width: 100%;
+  }
+
+  .note-editor-actions {
+    justify-content: stretch;
+  }
+
+  .note-editor-actions .counter {
+    flex: 1 0 100%;
+    margin: 0 0 0.25rem;
+  }
+
+  .note-editor-actions button {
+    flex: 1;
+  }
+
+  .cell-actions {
+    padding-top: 0.6rem;
+  }
+
+  .cell-actions button {
+    flex: 1 1 auto;
+    min-width: 6rem;
+    padding: 0.6rem 0.75rem;
+    font-size: 0.95rem;
+  }
+}
+
+/* Touch devices: bigger hit areas everywhere. Keyed off pointer type rather
+   than width so an iPad kiosk gets this at any orientation. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea,
+  button {
+    min-height: 3rem;
+  }
+
+  .queue-list li {
+    padding: 0.15rem 0;
+  }
+
+  .link-button {
+    min-height: 2.75rem;
+  }
+}
+
+/* Tablet-sized kiosk: scale the sign-in screen up so it reads from arm's
+   length. Keyed off width, not pointer type — an iPad with a keyboard attached
+   reports a fine pointer, which would silently skip these. Scoped to the
+   visitor page so the admin table keeps its denser layout. The height floor
+   keeps a phone in landscape (wide but short) out of kiosk sizing, where the
+   oversized numbers would push the form off screen. */
+@media (min-width: 700px) and (min-height: 600px) {
+  .page:not(.page-wide) {
+    max-width: 44rem;
+  }
+
+  .page:not(.page-wide) .page-head h1 {
+    font-size: 2rem;
+  }
+
+  .page:not(.page-wide) .card label {
+    font-size: 1rem;
+  }
+
+  .page:not(.page-wide) input,
+  .page:not(.page-wide) select,
+  .page:not(.page-wide) textarea,
+  .page:not(.page-wide) button {
+    font-size: 1.125rem;
+    min-height: 3.5rem;
+  }
+
+  .page:not(.page-wide) .now-serving-number {
+    font-size: 3.5rem;
+  }
+
+  .page:not(.page-wide) .ticket-number {
+    font-size: 2.5rem;
+  }
+
+  .page:not(.page-wide) .ticket-name {
+    font-size: 1.6rem;
+  }
+
+  .page:not(.page-wide) .queue-list {
+    font-size: 1.125rem;
+  }
+}
+
+.section-note {
+  margin: -0.25rem 0 0.5rem;
+}

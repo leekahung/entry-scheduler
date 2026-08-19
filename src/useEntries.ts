@@ -1,0 +1,164 @@
+import { useCallback, useEffect, useState } from "react";
+import {
+  ApiError,
+  bookEntry,
+  clearAllEntries,
+  deleteEntry,
+  fetchAdminAlerts,
+  fetchAllEntries,
+  updateDetails,
+  updatePriority,
+  updateStatus,
+  type AdminAlerts,
+  type AdminEntry,
+  type CaseDetails,
+  type Intake,
+  type Priority,
+  type Status,
+} from "./api";
+
+const POLL_MS = 5000;
+
+export type EntryDetails = {
+  helpedBy: string;
+  adminNote: string;
+  priority: Priority;
+  scheduledFor: string;
+} & Intake &
+  CaseDetails;
+
+/** Only the fields the editor actually changed, so a save cannot clobber. */
+export type EntryChanges = Partial<EntryDetails>;
+
+export type NewBooking = Parameters<typeof bookEntry>[1];
+
+/**
+ * Owns the entry list, its polling, and every mutation staff can make.
+ *
+ * Failed saves are kept apart from the connection state: the poll runs every
+ * five seconds, so folding them together would wipe "could not save" off the
+ * screen before anyone read it.
+ */
+export function useEntries(passcode: string, unlocked: boolean) {
+  const [entries, setEntries] = useState<AdminEntry[]>([]);
+  const [alerts, setAlerts] = useState<AdminAlerts | null>(null);
+  const [offline, setOffline] = useState(false);
+  // A verdict from the server rather than a network problem, which has to stop
+  // the poll: only failed requests count against the admin rate limit, so five
+  // seconds of retrying would spend the whole budget and lock staff out of
+  // signing back in.
+  const [rejected, setRejected] = useState<ApiError | null>(null);
+  const [actionError, setActionError] = useState("");
+  // Until the first fetch lands, no entries means unknown, not empty.
+  const [loaded, setLoaded] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const [nextEntries, nextAlerts] = await Promise.all([
+        fetchAllEntries(passcode),
+        fetchAdminAlerts(passcode),
+      ]);
+      setEntries(nextEntries);
+      setAlerts(nextAlerts);
+      setOffline(false);
+      setLoaded(true);
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        (err.status === 401 || err.status === 429)
+      ) {
+        setRejected(err);
+        return;
+      }
+      setOffline(true);
+    }
+  }, [passcode]);
+
+  useEffect(() => {
+    if (!unlocked) {
+      setEntries([]);
+      setAlerts(null);
+      setLoaded(false);
+      setOffline(false);
+      setRejected(null);
+      return;
+    }
+    if (rejected) return;
+
+    refresh();
+    const timer = setInterval(refresh, POLL_MS);
+    return () => clearInterval(timer);
+  }, [unlocked, refresh, rejected]);
+
+  /** Runs a mutation, surfacing its failure without disturbing the poll. */
+  const run = useCallback(
+    async (fallback: string, action: () => Promise<void>) => {
+      setActionError("");
+      try {
+        await action();
+        return true;
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : fallback);
+        return false;
+      }
+    },
+    [],
+  );
+
+  const replace = (updated: AdminEntry) =>
+    setEntries((current) =>
+      current.map((row) => (row.id === updated.id ? updated : row)),
+    );
+
+  return {
+    entries,
+    alerts,
+    offline,
+    loaded,
+    actionError,
+    rejected,
+    refresh,
+
+    // Clears a server verdict so the poll can start again. The poll stays off
+    // until something asks for this, so a rate limit cannot re-trip itself.
+    resume: () => setRejected(null),
+
+    setStatus: (entry: AdminEntry, status: Status, helpedBy: string) =>
+      run("Could not update that entry.", async () => {
+        replace(await updateStatus(passcode, entry.id, status, helpedBy));
+      }),
+
+    setPriority: (entry: AdminEntry, priority: Priority) =>
+      run("Could not change that priority.", async () => {
+        replace(await updatePriority(passcode, entry.id, priority));
+        // Retriaging moves the row, and only the server decides where to.
+        await refresh();
+      }),
+
+    saveDetails: (entry: AdminEntry, details: EntryChanges) =>
+      run("Could not save those changes.", async () => {
+        replace(await updateDetails(passcode, entry.id, details));
+        await refresh();
+      }),
+
+    book: (booking: NewBooking) =>
+      run("Could not book that in.", async () => {
+        await bookEntry(passcode, booking);
+        // Refresh rather than append: the server decides where in the line a
+        // booking lands, and appending would flash it in the wrong place.
+        await refresh();
+      }),
+
+    remove: (entry: AdminEntry) =>
+      run("Could not remove that entry.", async () => {
+        await deleteEntry(passcode, entry.id);
+        setEntries((current) => current.filter((row) => row.id !== entry.id));
+      }),
+
+    clearAll: () =>
+      run("Could not clear the queue.", async () => {
+        await clearAllEntries(passcode);
+        setEntries([]);
+      }),
+  };
+}
