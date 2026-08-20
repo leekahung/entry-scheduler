@@ -262,7 +262,7 @@ export default function UserPage() {
             value={gender}
             onChange={(event) => setGender(event.target.value as Gender | "")}
           >
-            <option value="">Prefer not to say</option>
+            <option value="">—</option>
             {GENDERS.map((option) => (
               <option key={option} value={option}>
                 {option}
