@@ -7,3 +7,4 @@ entries.db-wal
 *.csv
 *.tsbuildinfo
 dist-server
+.playwright-mcp
