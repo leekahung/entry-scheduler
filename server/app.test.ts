@@ -90,6 +90,16 @@ describe("admin gate", () => {
   });
 });
 
+describe("csv export", () => {
+  it("starts with a BOM so Excel reads non-ASCII names as UTF-8", async () => {
+    await join("José Nguyễn");
+    const res = await asAdmin(request(app).get("/api/entries.csv"));
+    expect(res.status).toBe(200);
+    expect(res.text.startsWith("\uFEFF")).toBe(true);
+    expect(res.text).toContain("José Nguyễn");
+  });
+});
+
 describe("public names", () => {
   it("shortens a surname to an initial", () => {
     expect(publicName("Ada Lovelace")).toBe("Ada L.");

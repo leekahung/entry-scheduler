@@ -288,6 +288,22 @@ export async function downloadCsv(passcode: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** Mirrors the whole log into the clinic's Google Sheet. */
+export async function syncSheet(passcode: string): Promise<number> {
+  const res = await fetch("/api/admin/sheets-sync", {
+    method: "POST",
+    headers: adminHeaders(passcode),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new ApiError(
+      body?.error ?? `Sheets sync failed (${res.status})`,
+      res.status,
+    );
+  }
+  return (body?.rows as number) ?? 0;
+}
+
 /**
  * What the processing log still needs before this client counts as recorded.
  * Legal outcome is deliberately not required: a consult that files nothing is

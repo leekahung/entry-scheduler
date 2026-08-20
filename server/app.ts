@@ -5,6 +5,7 @@ import helmet from "helmet";
 import { createHash, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { toCsv } from "./csv.js";
+import { pushToSheet, sheetsConfig } from "./sheets.js";
 import {
   addEntry,
   clearEntries,
@@ -281,8 +282,37 @@ export function createApp(
     // come first or it drops the charset and non-ASCII names decode wrongly.
     res.attachment(`entries-${stamp}.csv`);
     res.type("text/csv; charset=utf-8");
-    res.send(toCsv(listEntries(db)));
+    // Excel ignores the charset header when a downloaded .csv is opened by
+    // double-click and falls back to the system codepage, which mangles any
+    // non-ASCII name. The BOM is what tells it the file is UTF-8.
+    res.send(`\uFEFF${toCsv(listEntries(db))}`);
   });
+
+  // Mirrors the log into the clinic's spreadsheet, which is where staff
+  // without a database read it. SQLite stays the source of truth.
+  app.post(
+    "/api/admin/sheets-sync",
+    adminLimiter,
+    requireAdmin,
+    async (_req, res) => {
+      const config = sheetsConfig();
+      if (!config) {
+        res.status(501).json({
+          error:
+            "Google Sheets is not configured on the server. Set GOOGLE_SHEETS_ID, GOOGLE_SA_EMAIL and GOOGLE_SA_KEY.",
+        });
+        return;
+      }
+      try {
+        const { rows } = await pushToSheet(config, listEntries(db));
+        res.json({ rows });
+      } catch (error) {
+        res.status(502).json({
+          error: error instanceof Error ? error.message : "Sheets push failed.",
+        });
+      }
+    },
+  );
 
   app.post("/api/admin/verify", adminLimiter, requireAdmin, (_req, res) => {
     res.json({ ok: true });

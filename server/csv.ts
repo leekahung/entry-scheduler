@@ -16,6 +16,17 @@ const COLUMNS: readonly [string, (entry: Entry) => string | number][] = [
   ["Time (0.25 increments)", (e) => (e.timeSpent ? e.timeSpent : "")],
 ];
 
+/**
+ * The log as a header row plus one row per entry.
+ * Shared by the CSV export and the Sheets push so the two can never drift.
+ */
+export function toRows(entries: Entry[]): (string | number)[][] {
+  return [
+    COLUMNS.map(([header]) => header),
+    ...entries.map((entry) => COLUMNS.map(([, read]) => read(entry))),
+  ];
+}
+
 function escapeCell(value: string | number): string {
   const text = String(value);
   // Prefix formula-leading characters so spreadsheets treat them as text.
@@ -25,11 +36,10 @@ function escapeCell(value: string | number): string {
 
 /** Renders entries as RFC 4180 CSV with a header row. */
 export function toCsv(entries: Entry[]): string {
+  const [header, ...data] = toRows(entries);
   const rows = [
-    COLUMNS.map(([header]) => header).join(","),
-    ...entries.map((entry) =>
-      COLUMNS.map(([, read]) => escapeCell(read(entry))).join(","),
-    ),
+    header.join(","),
+    ...data.map((row) => row.map(escapeCell).join(",")),
   ];
   return `${rows.join("\r\n")}\r\n`;
 }

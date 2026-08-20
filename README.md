@@ -148,6 +148,10 @@ Set these on the host:
 | `ADMIN_PASSCODE` | Required. The server refuses to start without it.        |
 | `PORT`           | Most hosts set this for you; defaults to 3001.           |
 | `DB_FILE`        | Point at a **persistent disk**, e.g. `/data/entries.db`. |
+| `GOOGLE_SHEETS_ID` | Optional. Enables "Send to Google Sheet"; the id from the sheet URL. |
+| `GOOGLE_SHEETS_TAB` | Optional. Tab to write, defaults to `Sign In Log`. |
+| `GOOGLE_SA_EMAIL` | Only when using a downloaded key. Service account `client_email`. |
+| `GOOGLE_SA_KEY`  | Only when using a downloaded key. `private_key`, newlines as `\n`. |
 
 Build command `npm run build`, start command `npm start`.
 
@@ -155,6 +159,40 @@ The database is a SQLite file. On hosts with ephemeral filesystems (the default
 on Render, Railway, Fly) the queue is wiped on every deploy and restart unless
 `DB_FILE` points at a mounted volume. This is the most common way this setup
 breaks.
+
+## Google Sheets mirror
+
+Staff who do not want to read a database can get the same log as a spreadsheet.
+"Send to Google Sheet" in the console rewrites one tab with the whole log — the
+same columns as the CSV export. SQLite stays the source of truth; the sheet is
+a copy, so editing it does not change the queue.
+
+Setting it up:
+
+1. In Google Cloud, enable the **Google Sheets API** for the project.
+2. Create a **service account**.
+3. **Share the spreadsheet with the service account's address, as an Editor.**
+   A service account is its own identity, not you — without this every write
+   comes back `403`.
+4. Set `GOOGLE_SHEETS_ID` (and `GOOGLE_SHEETS_TAB` if the tab is not
+   `Sign In Log`). Without an id the button reports the feature as
+   unconfigured and nothing is sent.
+5. Give the server a way to authenticate as that account, either:
+   - **attached identity, no key** — deploy on a host running as the service
+     account (Cloud Run's `--service-account`), and leave `GOOGLE_SA_EMAIL`
+     and `GOOGLE_SA_KEY` unset. Nothing to leak, and it is the only option
+     when the organisation enforces
+     `constraints/iam.disableServiceAccountKeyCreation`; or
+   - **downloaded key** — set `GOOGLE_SA_EMAIL` and `GOOGLE_SA_KEY` from a
+     service-account JSON key.
+
+The push is `valueInputOption=RAW`, so a name beginning `=` lands as text
+rather than being evaluated as a formula.
+
+Note that this sends client names, dates of birth, phone numbers and case
+details to Google. The admin API otherwise refuses non-local callers, so this
+is the one path that takes intake data off site — worth checking against the
+clinic's confidentiality policy before switching it on.
 
 Two other things to get right before real use:
 
