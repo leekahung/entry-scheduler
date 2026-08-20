@@ -123,13 +123,15 @@ export default function EntryEditor({
 
   return (
     <>
-      <p className="note-editor-title">
+      <p className="mx-0 mt-0 mb-[0.6rem] font-bold">
         Editing #{entry.id} · {entry.name}
       </p>
 
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor={`dob-${entry.id}`}>Date of birth</label>
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`dob-${entry.id}`}>
+            Date of birth
+          </label>
           <input
             id={`dob-${entry.id}`}
             type="date"
@@ -138,8 +140,10 @@ export default function EntryEditor({
             max={todayLocal()}
           />
         </div>
-        <div className="field">
-          <label htmlFor={`phone-${entry.id}`}>Phone number</label>
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`phone-${entry.id}`}>
+            Phone number
+          </label>
           <input
             id={`phone-${entry.id}`}
             type="tel"
@@ -150,9 +154,11 @@ export default function EntryEditor({
         </div>
       </div>
 
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor={`gender-${entry.id}`}>Gender</label>
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`gender-${entry.id}`}>
+            Gender
+          </label>
           <select
             id={`gender-${entry.id}`}
             value={draft.gender}
@@ -168,8 +174,10 @@ export default function EntryEditor({
             ))}
           </select>
         </div>
-        <div className="field">
-          <label htmlFor={`caseType-${entry.id}`}>Case type</label>
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`caseType-${entry.id}`}>
+            Case type
+          </label>
           <select
             id={`caseType-${entry.id}`}
             value={draft.caseType}
@@ -187,10 +195,12 @@ export default function EntryEditor({
         </div>
       </div>
 
-      <label htmlFor={`helper-${entry.id}`}>Helped by</label>
+      <label className="my-2 block" htmlFor={`helper-${entry.id}`}>
+        Helped by
+      </label>
       <input
         id={`helper-${entry.id}`}
-        className="helper-input"
+        className="mb-3 max-w-[18rem]"
         value={draft.helpedBy}
         onChange={(event) => set("helpedBy", event.target.value)}
         maxLength={80}
@@ -199,9 +209,11 @@ export default function EntryEditor({
         autoFocus
       />
 
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor={`when-${entry.id}`}>Appointment time</label>
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`when-${entry.id}`}>
+            Appointment time
+          </label>
           <input
             id={`when-${entry.id}`}
             type="datetime-local"
@@ -209,8 +221,10 @@ export default function EntryEditor({
             onChange={(event) => set("scheduledFor", event.target.value)}
           />
         </div>
-        <div className="field">
-          <label htmlFor={`priority-${entry.id}`}>Triage level</label>
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`priority-${entry.id}`}>
+            Triage level
+          </label>
           <select
             id={`priority-${entry.id}`}
             value={draft.priority}
@@ -227,9 +241,11 @@ export default function EntryEditor({
         </div>
       </div>
 
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor={`apptType-${entry.id}`}>Appointment type</label>
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`apptType-${entry.id}`}>
+            Appointment type
+          </label>
           <select
             id={`apptType-${entry.id}`}
             value={draft.appointmentType}
@@ -248,8 +264,10 @@ export default function EntryEditor({
             ))}
           </select>
         </div>
-        <div className="field">
-          <label htmlFor={`apptOutcome-${entry.id}`}>Appointment outcome</label>
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`apptOutcome-${entry.id}`}>
+            Appointment outcome
+          </label>
           <select
             id={`apptOutcome-${entry.id}`}
             value={draft.appointmentOutcome}
@@ -270,9 +288,11 @@ export default function EntryEditor({
         </div>
       </div>
 
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor={`legalOutcome-${entry.id}`}>Legal outcome</label>
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`legalOutcome-${entry.id}`}>
+            Legal outcome
+          </label>
           <select
             id={`legalOutcome-${entry.id}`}
             value={draft.legalOutcome}
@@ -295,8 +315,10 @@ export default function EntryEditor({
             ))}
           </select>
         </div>
-        <div className="field">
-          <label htmlFor={`time-${entry.id}`}>Time (hours, 0.25 steps)</label>
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+          <label className="my-2 block" htmlFor={`time-${entry.id}`}>
+            Time (hours, 0.25 steps)
+          </label>
           <input
             id={`time-${entry.id}`}
             type="number"
@@ -309,9 +331,12 @@ export default function EntryEditor({
         </div>
       </div>
 
-      <label htmlFor={`note-${entry.id}`}>Admin note</label>
+      <label className="my-2 block" htmlFor={`note-${entry.id}`}>
+        Admin note
+      </label>
       <textarea
         id={`note-${entry.id}`}
+        className="max-w-[44rem]"
         value={draft.adminNote}
         onChange={(event) =>
           set("adminNote", event.target.value.slice(0, ADMIN_NOTE_MAX))
@@ -320,14 +345,23 @@ export default function EntryEditor({
         rows={3}
         placeholder="Only staff can see this."
       />
-      <div className="note-editor-actions">
-        <span className="counter">
+      <div className="mt-2 flex max-w-[44rem] flex-wrap items-center justify-end gap-2 card-mode:justify-stretch">
+        <span className="mr-auto text-left text-[0.8rem] text-muted card-mode:mr-0 card-mode:mb-1 card-mode:flex-[1_0_100%]">
           {ADMIN_NOTE_MAX - draft.adminNote.length} characters left
         </span>
-        <button type="button" className="secondary" onClick={handleCancel}>
+        <button
+          type="button"
+          className="border-border bg-surface text-text card-mode:flex-1"
+          onClick={handleCancel}
+        >
           Cancel
         </button>
-        <button type="button" onClick={handleSave} disabled={saving}>
+        <button
+          type="button"
+          className="card-mode:flex-1"
+          onClick={handleSave}
+          disabled={saving}
+        >
           {saving ? "Saving…" : "Save changes"}
         </button>
       </div>

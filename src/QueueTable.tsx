@@ -28,6 +28,46 @@ const STATUS_ACTION: Record<Status, string> = {
 // Past this a walk-in has been sitting long enough that staff should see it.
 const LONG_WAIT_MINUTES = 30;
 
+// Under card-mode the header row is gone, so each cell grows its own label
+// from data-label.
+const CELL =
+  "px-3 py-[0.7rem] text-left align-middle [overflow-wrap:anywhere] border-b border-row-line card-mode:flex card-mode:items-baseline card-mode:gap-2 card-mode:border-0 card-mode:px-0 card-mode:py-[0.15rem]";
+
+const LABELLED_CELL = `${CELL} card-mode:before:block card-mode:before:flex-[0_0_5.5rem] card-mode:before:text-[0.75rem] card-mode:before:font-bold card-mode:before:tracking-[0.03em] card-mode:before:text-muted card-mode:before:uppercase card-mode:before:content-[attr(data-label)]`;
+
+const HEAD_CELL =
+  "px-3 pt-[0.7rem] pb-[0.4rem] text-left align-middle text-[0.75rem] tracking-[0.04em] text-muted uppercase border-b border-border";
+
+// Fixed widths per action so the column does not reflow when a label changes
+// ("Start helping" -> "Mark helped" -> "Reopen").
+const ACTION =
+  "px-[0.6rem] py-[0.35rem] text-[0.85rem] pointer-fine:min-h-[2rem] pointer-fine:px-2 pointer-fine:py-[0.3rem] card-mode:min-w-[6rem] card-mode:flex-[1_1_auto] card-mode:px-3 card-mode:py-[0.6rem] card-mode:text-[0.95rem]";
+
+// Card mode turns every row into a card; the editor row gets the same shell
+// so it reads as part of the entry it belongs to.
+const ROW =
+  "card-mode:mb-3 card-mode:block card-mode:rounded-xl card-mode:border card-mode:border-border card-mode:bg-surface card-mode:px-4 card-mode:py-[0.85rem]";
+
+const BADGE =
+  "whitespace-nowrap rounded-full border border-current px-2 py-[0.15rem] text-[0.75rem] font-bold uppercase tracking-[0.03em]";
+
+const BADGE_COLOR: Record<Status, string> = {
+  new: "text-new",
+  pending: "text-pending",
+  resolved: "text-resolved",
+};
+
+const TRIAGE_COLOR: Record<Priority, string> = {
+  emergency: "text-emergency border-emergency",
+  urgent: "text-urgent",
+  routine: "",
+};
+
+// Two different voices under one name: what the visitor asked for, and what
+// staff wrote about it. Labelled so they are never confused.
+const NOTE =
+  "mt-[0.3rem] block border-l-2 pl-[0.55rem] text-[0.88rem] font-normal before:block before:text-[0.7rem] before:font-bold before:tracking-[0.04em] before:text-muted before:uppercase card-mode:text-[0.85rem]";
+
 type Props = {
   rows: AdminEntry[];
   caption: string;
@@ -57,21 +97,46 @@ export default function QueueTable({
   onRemove,
 }: Props) {
   return (
-    <table className="entries">
-      <caption className="visually-hidden">{caption}</caption>
-      <thead>
+    <table
+      /* Fixed layout keeps every column the same width whether or not an
+         entry has notes, and keeps the active and resolved tables aligned
+         with each other since they are separate <table> elements. */
+      className="w-full table-fixed border-collapse overflow-hidden rounded-xl border border-border bg-surface card-mode:block card-mode:overflow-visible card-mode:border-none card-mode:bg-transparent"
+    >
+      <caption className="sr-only">{caption}</caption>
+      <thead className="card-mode:hidden">
         <tr>
-          <th scope="col">#</th>
-          <th scope="col">Name</th>
-          <th scope="col">Case type</th>
-          <th scope="col">Triage</th>
-          <th scope="col">Status</th>
-          <th scope="col">Waiting</th>
-          <th scope="col">Helped by</th>
-          <th scope="col">Actions</th>
+          {/* Column widths: name takes the slack, everything else is pinned. */}
+          <th scope="col" className={`${HEAD_CELL} w-[5rem]`}>
+            #
+          </th>
+          <th scope="col" className={HEAD_CELL}>
+            Name
+          </th>
+          <th scope="col" className={`${HEAD_CELL} w-[8.5rem]`}>
+            Case type
+          </th>
+          {/* Fits "Emergency" plus the native dropdown arrow. */}
+          <th scope="col" className={`${HEAD_CELL} w-[8.25rem]`}>
+            Triage
+          </th>
+          {/* Fits the longest badge ("Being helped") without overflowing. */}
+          <th scope="col" className={`${HEAD_CELL} w-[9rem]`}>
+            Status
+          </th>
+          <th scope="col" className={`${HEAD_CELL} w-[8rem]`}>
+            Waiting
+          </th>
+          <th scope="col" className={`${HEAD_CELL} w-[6rem]`}>
+            Helped by
+          </th>
+          {/* Holds all three action buttons on one line at their fixed widths. */}
+          <th scope="col" className={`${HEAD_CELL} w-[19.5rem]`}>
+            Actions
+          </th>
         </tr>
       </thead>
-      <tbody>
+      <tbody className="[&>tr:last-child>td]:border-b-0 card-mode:block">
         {rows.map((entry) => {
           const missing = missingForLog(entry);
           // An appointment is not late until its time comes round, so a
@@ -82,55 +147,71 @@ export default function QueueTable({
 
           return (
             <Fragment key={entry.id}>
-              <tr className={`row-${entry.status}`}>
+              <tr
+                className={`${ROW} ${
+                  entry.status === "resolved" ? "text-muted" : ""
+                }`}
+              >
                 {/* data-label supplies the field name once the table collapses
                     into cards on narrow screens, where the header row is gone. */}
-                <td className="cell-id">
+                {/* Number and name read as the card's title instead of
+                    labelled fields once the table collapses. */}
+                <td
+                  className={`${CELL} card-mode:pb-0 card-mode:text-[0.95rem] card-mode:font-bold card-mode:text-muted`}
+                >
                   #{entry.id}
                   {/* The export exists to track who has been processed, so an
                       unfinished row is worth flagging before it is exported. */}
                   {missing.length > 0 && (
                     <span
-                      className="incomplete-dot"
+                      className="ml-[0.35rem] inline-block size-2 rounded-full bg-new align-[0.1rem]"
                       title={`Still needs ${missing.join(", ")}`}
                     >
-                      <span className="visually-hidden">
+                      <span className="sr-only">
                         Still needs {missing.join(", ")}
                       </span>
                     </span>
                   )}
                 </td>
-                <td className="cell-name">
+                <td
+                  className={`${CELL} font-semibold card-mode:block card-mode:pt-0 card-mode:pb-2 card-mode:text-[1.2rem]`}
+                >
                   {entry.name}
                   {entry.note && (
-                    <span className="visitor-note">{entry.note}</span>
+                    <span
+                      className={`${NOTE} border-l-[#cfd6dd] text-text before:content-['Asked_for']`}
+                    >
+                      {entry.note}
+                    </span>
                   )}
                   {entry.adminNote && editingId !== entry.id && (
-                    <span className="admin-note-preview">
+                    <span
+                      className={`${NOTE} border-l-accent text-muted italic before:not-italic before:content-['Staff_note']`}
+                    >
                       {entry.adminNote}
                     </span>
                   )}
                 </td>
-                <td data-label="Case type">
+                <td data-label="Case type" className={LABELLED_CELL}>
                   {entry.caseType ? (
                     // The code here, the spelled-out version on hover: the
                     // long labels are written for visitors and run to several
                     // lines in a column this wide.
                     <span
-                      className="case-type"
+                      className="text-[0.85rem]"
                       title={CASE_TYPE_LABEL[entry.caseType]}
                     >
                       {entry.caseType}
                     </span>
                   ) : (
-                    <span className="subtle">—</span>
+                    <span className="text-muted">—</span>
                   )}
                 </td>
-                <td data-label="Triage">
+                <td data-label="Triage" className={LABELLED_CELL}>
                   {/* A select rather than a badge: retriaging is the whole
                       point of a triage queue, so it should be one click. */}
                   <select
-                    className={`triage-select triage-${entry.priority}`}
+                    className={`min-h-[2.25rem] px-[0.4rem] py-1 text-[0.85rem] font-semibold card-mode:max-w-[12rem] ${TRIAGE_COLOR[entry.priority]}`}
                     value={entry.priority}
                     onChange={(event) =>
                       onPriority(entry, event.target.value as Priority)
@@ -144,15 +225,17 @@ export default function QueueTable({
                     ))}
                   </select>
                 </td>
-                <td data-label="Status">
-                  <span className={`badge badge-${entry.status}`}>
+                <td data-label="Status" className={LABELLED_CELL}>
+                  <span className={`${BADGE} ${BADGE_COLOR[entry.status]}`}>
                     {STATUS_LABEL[entry.status]}
                   </span>
                 </td>
-                <td data-label="Waiting">
-                  <span className="cell-when">
+                <td data-label="Waiting" className={LABELLED_CELL}>
+                  <span className="flex flex-col leading-[1.3] whitespace-nowrap">
                     {entry.scheduledFor && (
-                      <span className="appointment-flag">
+                      /* Wraps inside the nowrap column, which only needs to
+                         keep the date and the time each on their own line. */
+                      <span className="text-[0.7rem] font-bold tracking-[0.03em] whitespace-normal text-accent uppercase">
                         Appointment {formatAppointment(entry.scheduledFor)}
                       </span>
                     )}
@@ -163,45 +246,49 @@ export default function QueueTable({
                         <span
                           className={
                             wait.minutes >= LONG_WAIT_MINUTES
-                              ? "wait-long"
+                              ? "font-bold text-new"
                               : undefined
                           }
                         >
                           {wait.label}
                         </span>
-                        <span className="cell-date">
+                        <span className="text-[0.8rem] text-muted">
                           since {formatTime(waitingSince)}
                         </span>
                       </>
                     ) : (
                       // Nobody is waiting here: the entry is either finished
                       // or an appointment whose time has not come round yet.
-                      <span className="cell-date">
+                      <span className="text-[0.8rem] text-muted">
                         {entry.status === "resolved" ? "" : "booked "}
                         {formatTime(entry.createdAt)}
                       </span>
                     )}
                   </span>
                 </td>
-                <td data-label="Helped by">
-                  {entry.helpedBy || <span className="subtle">—</span>}
+                <td data-label="Helped by" className={LABELLED_CELL}>
+                  {entry.helpedBy || <span className="text-muted">—</span>}
                 </td>
                 {/* The flex row lives in a wrapper: a <td> that is itself a
                     flex container stops being a real table cell, which breaks
                     the row separators. */}
-                <td className="cell-actions">
-                  <div className="actions-row">
+                <td className={`${CELL} card-mode:pt-[0.6rem]`}>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       // Reopening a finished entry is rare; keep it quiet.
-                      className={`action-status${entry.status === "resolved" ? " secondary" : ""}`}
+                      className={`${ACTION} min-w-[6.75rem] ${
+                        entry.status === "resolved"
+                          ? "border-border bg-surface text-text"
+                          : ""
+                      }`}
                       onClick={() => onStatus(entry, NEXT_STATUS[entry.status])}
                     >
                       {STATUS_ACTION[entry.status]}
                     </button>
                     <button
                       type="button"
-                      className="secondary action-note"
+                      className={`${ACTION} min-w-[5.25rem] border-border bg-surface text-text`}
                       onClick={() => onToggleEdit(entry)}
                       aria-expanded={editingId === entry.id}
                     >
@@ -209,7 +296,7 @@ export default function QueueTable({
                     </button>
                     <button
                       type="button"
-                      className="danger action-remove"
+                      className={`${ACTION} min-w-[4.75rem] border-border bg-surface text-danger`}
                       onClick={() => onRemove(entry)}
                     >
                       Remove
@@ -218,8 +305,11 @@ export default function QueueTable({
                 </td>
               </tr>
               {editingId === entry.id && draft && initialDraft && (
-                <tr className="note-editor-row">
-                  <td colSpan={8}>
+                <tr className={`${ROW} card-mode:-mt-2`}>
+                  <td
+                    colSpan={8}
+                    className="bg-bg px-3 pt-[0.85rem] pb-4 card-mode:block card-mode:px-0 card-mode:py-[0.85rem]"
+                  >
                     <EntryEditor
                       entry={entry}
                       draft={draft}

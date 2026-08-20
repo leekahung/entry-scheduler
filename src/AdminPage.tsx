@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   downloadCsv,
+  syncSheet,
   missingForLog,
   PRIORITIES,
   PRIORITY_LABEL,
@@ -11,7 +12,7 @@ import {
 import BookingForm from "./BookingForm";
 import { seedDraft, type EditorDraft } from "./EntryEditor";
 import QueueTable from "./QueueTable";
-import { minutesAgo } from "./time";
+import { minutesAgo, unclosedMonth } from "./time";
 import type { EntryChanges } from "./useEntries";
 import { useAdminSession } from "./useAdminSession";
 import { useEntries } from "./useEntries";
@@ -20,6 +21,22 @@ import { useEntries } from "./useEntries";
 // quarter hour is worth staff looking up.
 const ALERT_FROM = 3;
 // Only warn about the lockout once it's close enough to matter.
+const MODAL =
+  "m-auto w-[calc(100%-2rem)] max-w-[26rem] rounded-xl border border-border bg-surface p-6 text-text backdrop:bg-black/45";
+
+const MODAL_ACTION = "max-[480px]:w-full";
+
+const SECONDARY = "border-border bg-surface text-text";
+
+const SECTION_HEADING =
+  "mx-0 mt-0 mb-2 text-base tracking-[0.04em] text-muted uppercase";
+
+const EMPTY_NOTE =
+  "m-0 rounded-xl border border-border bg-surface p-5 text-muted";
+
+const BANNER =
+  "m-0 rounded-lg border border-[#f0c48a] bg-[#fff4e5] px-[0.9rem] py-[0.6rem] text-[0.9rem] text-[#8a5200]";
+
 const REMAINING_WARN_FROM = 5;
 
 /** Staff console: work the queue, book people in, export the full sheet. */
@@ -43,6 +60,8 @@ export default function AdminPage() {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [downloadError, setDownloadError] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState("");
   const [query, setQuery] = useState("");
   const [triage, setTriage] = useState<Priority | "">("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
@@ -89,10 +108,31 @@ export default function AdminPage() {
     setShowBooking(false);
   }
 
+  const sendToSheet = async () => {
+    setSyncing(true);
+    setSyncNote("");
+    setDownloadError("");
+    try {
+      const rows = await syncSheet(passcode);
+      setSyncNote(
+        `Spreadsheet updated — ${rows} ${rows === 1 ? "entry" : "entries"}.`,
+      );
+    } catch (error) {
+      setDownloadError(
+        error instanceof Error
+          ? error.message
+          : "Could not update the spreadsheet.",
+      );
+    }
+    setSyncing(false);
+  };
+
   const exportSheet = () => {
     // Cleared first, or a failure from an earlier attempt sits on screen
-    // looking like it belongs to this one.
+    // looking like it belongs to this one. Same for the sync note, which
+    // would otherwise read as confirmation of this download.
     setDownloadError("");
+    setSyncNote("");
     return downloadCsv(passcode).catch(() =>
       setDownloadError("Could not download the spreadsheet."),
     );
@@ -100,16 +140,21 @@ export default function AdminPage() {
 
   if (!unlocked) {
     return (
-      <main className="page page-narrow">
+      <main
+        data-scale="kiosk"
+        className="mx-auto flex max-w-[24rem] flex-col gap-5 pt-8 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] kiosk:max-w-[44rem]"
+      >
         <form
-          className="card"
+          className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
           onSubmit={(event) => {
             event.preventDefault();
             session.unlock();
           }}
         >
-          <h1>Staff sign-in</h1>
-          <p className="subtle">
+          <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
+            Staff sign-in
+          </h1>
+          <p className="mt-1 mb-0 text-muted">
             Enter the staff passcode to manage the help queue.
           </p>
           <label htmlFor="passcode">Passcode</label>
@@ -122,17 +167,19 @@ export default function AdminPage() {
             required
           />
           <button type="submit">Unlock</button>
-          {session.error && <p className="error">{session.error}</p>}
+          {session.error && (
+            <p className="m-0 text-[0.9rem] text-danger">{session.error}</p>
+          )}
           {session.attemptsLeft !== null &&
             session.attemptsLeft <= REMAINING_WARN_FROM && (
-              <p className="error-detail">
+              <p className="mx-0 mt-[-0.35rem] mb-0 text-[0.85rem] text-[#8a5200]">
                 {session.attemptsLeft === 0
                   ? "No attempts left — this device is now locked for 15 minutes."
                   : `${session.attemptsLeft} ${session.attemptsLeft === 1 ? "attempt" : "attempts"} left before this device is locked out for 15 minutes.`}
               </p>
             )}
         </form>
-        <p className="signin-back">
+        <p className="m-0 text-center text-[0.9rem] text-muted">
           Here to get help instead? <a href="#/">Check in</a>
         </p>
       </main>
@@ -166,6 +213,10 @@ export default function AdminPage() {
 
   // Counted off the full queue, not the filtered view: this line is the state
   // of the room, and a filter should never make people appear to leave it.
+  // The month rolled over with last month's entries still on the board, so
+  // they have not been exported yet.
+  const monthToClose = unclosedMonth(entries.map((entry) => entry.createdAt));
+
   const allInRoom = entries.filter((e) => e.status !== "resolved" && e.due);
   const beingHelped = allInRoom.filter((e) => e.status === "pending").length;
 
@@ -199,11 +250,13 @@ export default function AdminPage() {
   };
 
   return (
-    <main className="page page-wide">
-      <header className="page-head admin-head">
+    /* The seven-column table pins every column but the name, so the console
+       needs the extra width to keep names and notes off three lines. */
+    <main className="mx-auto flex max-w-[80rem] flex-col gap-5 pt-8 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
+      <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1>Queue admin</h1>
-          <p className="subtle">
+          <h1 className="m-0 text-[1.6rem]">Queue admin</h1>
+          <p className="mt-1 mb-0 text-muted">
             {allInRoom.length - beingHelped} waiting · {beingHelped} being
             helped ·{" "}
             {entries.filter((e) => e.status !== "resolved" && !e.due).length}{" "}
@@ -211,7 +264,7 @@ export default function AdminPage() {
             {entries.filter((e) => e.status === "resolved").length} done
           </p>
         </div>
-        <div className="head-actions">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => setShowBooking((shown) => !shown)}
@@ -219,19 +272,28 @@ export default function AdminPage() {
           >
             {showBooking ? "Close" : "Book someone in"}
           </button>
-          <button type="button" className="secondary" onClick={exportSheet}>
+          <button type="button" className={SECONDARY} onClick={exportSheet}>
             Download spreadsheet
           </button>
           <button
             type="button"
-            className="secondary"
+            className={SECONDARY}
+            onClick={sendToSheet}
+            disabled={syncing}
+          >
+            {syncing ? "Sending…" : "Send to Google Sheet"}
+          </button>
+          <button
+            type="button"
+            className={SECONDARY}
             onClick={() => handleSignOut()}
           >
             Sign out
           </button>
+          {/* "Clear all" wipes the board; keep it off the elbow of "Sign out". */}
           <button
             type="button"
-            className="danger"
+            className="ml-2 border-border bg-surface text-danger"
             onClick={() => setConfirmingClear(true)}
             disabled={entries.length === 0}
           >
@@ -251,7 +313,8 @@ export default function AdminPage() {
         />
       )}
 
-      <div className="identity-bar">
+      {/* Reads as "who am I", not as another entry field. */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
         <label htmlFor="helpedBy">Helping as</label>
         <input
           id="helpedBy"
@@ -260,10 +323,14 @@ export default function AdminPage() {
             setHelpedBy(event.target.value);
             localStorage.setItem("helpedBy", event.target.value);
           }}
+          className="w-auto flex-[0_1_14rem]"
           placeholder="Your name, e.g. Kim"
           aria-describedby="helpedBy-hint"
         />
-        <p id="helpedBy-hint" className="identity-hint">
+        <p
+          id="helpedBy-hint"
+          className="m-0 flex-[1_1_12rem] text-[0.85rem] text-muted"
+        >
           {helpedBy.trim()
             ? `Entries you work on will be credited to ${helpedBy.trim()}.`
             : "Add your name so the queue shows who helped each person."}
@@ -271,15 +338,19 @@ export default function AdminPage() {
       </div>
 
       {offline && (
-        <p className="offline-banner" role="status">
+        <p className={BANNER} role="status">
           Can&rsquo;t reach the server — this list may be out of date.
         </p>
       )}
 
       {queue.rejected && queue.rejected.status !== 401 && (
-        <p className="offline-banner" role="status">
+        <p className={BANNER} role="status">
           {queue.rejected.message} The list has stopped refreshing.{" "}
-          <button type="button" className="link-button" onClick={queue.resume}>
+          <button
+            type="button"
+            className="self-start bg-transparent p-0 text-accent underline pointer-coarse:min-h-[2.75rem]"
+            onClick={queue.resume}
+          >
             Try again
           </button>
         </p>
@@ -287,12 +358,35 @@ export default function AdminPage() {
 
       {/* Hidden while the clear-all dialog is up, which shows its own copy on
           top of the backdrop. */}
+      {syncNote && !confirmingClear && (
+        <p className="m-0 text-[0.9rem] text-resolved" role="status">
+          {syncNote}
+        </p>
+      )}
+
       {(queue.actionError || downloadError) && !confirmingClear && (
-        <p className="error">{queue.actionError || downloadError}</p>
+        <p className="m-0 text-[0.9rem] text-danger">
+          {queue.actionError || downloadError}
+        </p>
+      )}
+
+      {monthToClose && (
+        <p
+          className="m-0 rounded-lg border border-[#e5a3a3] border-l-4 border-l-[#c0392b] bg-[#fdecec] px-[0.9rem] py-[0.7rem] text-[0.9rem] leading-[1.45] text-[#7d2620]"
+          role="status"
+        >
+          <strong>{monthToClose} is not closed out yet.</strong> Entries from
+          then are still on the board. Download the spreadsheet before clearing
+          — clearing deletes the records, and the CSV is the only copy kept.
+        </p>
       )}
 
       {alerts && alerts.failedAttempts >= ALERT_FROM && (
-        <p className="alert-banner" role="status">
+        /* Louder than the offline banner: this one wants someone to act. */
+        <p
+          className="m-0 rounded-lg border border-[#e5a3a3] border-l-4 border-l-[#c0392b] bg-[#fdecec] px-[0.9rem] py-[0.7rem] text-[0.9rem] leading-[1.45] text-[#7d2620]"
+          role="status"
+        >
           <strong>{alerts.failedAttempts} failed sign-in attempts</strong> in
           the last {alerts.windowMinutes} minutes
           {alerts.lastAttemptAt &&
@@ -302,24 +396,26 @@ export default function AdminPage() {
         </p>
       )}
 
-      <div className="filter-bar">
-        <label className="visually-hidden" htmlFor="entry-search">
+      {/* Narrowing the three lists at once: the sections already split by
+          status, so this filters on the things they don't. */}
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
+        <label className="sr-only" htmlFor="entry-search">
           Search by name or number
         </label>
         <input
           id="entry-search"
           type="search"
-          className="filter-search"
+          className="w-auto flex-[1_1_16rem]"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search name or #number"
         />
-        <label className="visually-hidden" htmlFor="triage-filter">
+        <label className="sr-only" htmlFor="triage-filter">
           Triage level
         </label>
         <select
           id="triage-filter"
-          className="filter-select"
+          className="w-auto flex-[0_1_12rem]"
           value={triage}
           onChange={(event) => setTriage(event.target.value as Priority | "")}
         >
@@ -330,8 +426,9 @@ export default function AdminPage() {
             </option>
           ))}
         </select>
-        <label className="filter-check">
+        <label className="flex items-center gap-[0.4rem] font-normal whitespace-nowrap">
           <input
+            className="min-h-0 w-auto"
             type="checkbox"
             checked={incompleteOnly}
             onChange={(event) => setIncompleteOnly(event.target.checked)}
@@ -341,7 +438,7 @@ export default function AdminPage() {
         {filtering && (
           <button
             type="button"
-            className="secondary filter-clear"
+            className={`${SECONDARY} min-h-[2.25rem] px-[0.7rem] py-[0.35rem]`}
             onClick={() => {
               setQuery("");
               setTriage("");
@@ -352,20 +449,23 @@ export default function AdminPage() {
           </button>
         )}
         {filtering && (
-          <p className="filter-count" role="status">
+          <p
+            className="m-0 flex-[1_1_100%] text-[0.85rem] text-muted"
+            role="status"
+          >
             {visible.length} of {entries.length} shown
           </p>
         )}
       </div>
 
-      <section aria-labelledby="active-heading">
-        <h2 id="active-heading" className="section-heading">
+      <section className="mt-2" aria-labelledby="active-heading">
+        <h2 id="active-heading" className={SECTION_HEADING}>
           In the queue now ({inRoom.length})
         </h2>
         {!loaded ? (
-          <p className="empty-note">Loading entries…</p>
+          <p className={EMPTY_NOTE}>Loading entries…</p>
         ) : inRoom.length === 0 ? (
-          <p className="empty-note">
+          <p className={EMPTY_NOTE}>
             {filtering
               ? "No entries match these filters."
               : entries.length === 0
@@ -382,11 +482,11 @@ export default function AdminPage() {
       </section>
 
       {upcoming.length > 0 && (
-        <section aria-labelledby="upcoming-heading">
-          <h2 id="upcoming-heading" className="section-heading">
+        <section className="mt-2" aria-labelledby="upcoming-heading">
+          <h2 id="upcoming-heading" className={SECTION_HEADING}>
             Scheduled later ({upcoming.length})
           </h2>
-          <p className="subtle section-note">
+          <p className="mx-0 mt-[-0.25rem] mb-2 text-muted">
             Not in the line yet. Each joins automatically when its time comes.
           </p>
           <QueueTable
@@ -398,14 +498,14 @@ export default function AdminPage() {
       )}
 
       {resolved.length > 0 && (
-        <section aria-labelledby="resolved-heading">
-          <div className="section-head">
-            <h2 id="resolved-heading" className="section-heading">
+        <section className="mt-2" aria-labelledby="resolved-heading">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 id="resolved-heading" className={`${SECTION_HEADING} m-0`}>
               Done ({resolved.length})
             </h2>
             <button
               type="button"
-              className="secondary"
+              className={SECONDARY}
               onClick={() => setShowResolved((shown) => !shown)}
               aria-expanded={showResolved}
             >
@@ -424,35 +524,41 @@ export default function AdminPage() {
 
       <dialog
         ref={clearDialogRef}
-        className="modal"
+        className={MODAL}
         onClose={() => setConfirmingClear(false)}
       >
-        <h2 className="modal-title">
+        <h2 className="mx-0 mt-0 mb-2 text-[1.2rem]">
           Clear all {entries.length}{" "}
           {entries.length === 1 ? "entry" : "entries"}?
         </h2>
-        <p className="modal-body">
+        <p className="mx-0 mt-0 mb-5 text-muted">
           This empties the board for a fresh start and numbering begins again at
           #1. It cannot be undone — download the spreadsheet first if you need a
           record of today.
         </p>
-        {downloadError && <p className="error">{downloadError}</p>}
+        {downloadError && (
+          <p className="m-0 text-[0.9rem] text-danger">{downloadError}</p>
+        )}
         {/* Keeps DOM order on mobile so the recommended first step (download)
             stays first and the destructive action stays last. */}
-        <div className="modal-actions modal-actions-ordered">
-          <button type="button" className="secondary" onClick={exportSheet}>
+        <div className="flex flex-wrap justify-end gap-2 max-[480px]:flex-col">
+          <button
+            type="button"
+            className={`${SECONDARY} ${MODAL_ACTION}`}
+            onClick={exportSheet}
+          >
             Download spreadsheet
           </button>
           <button
             type="button"
-            className="secondary"
+            className={`${SECONDARY} ${MODAL_ACTION}`}
             onClick={() => setConfirmingClear(false)}
           >
             Cancel
           </button>
           <button
             type="button"
-            className="danger-solid"
+            className={`bg-danger text-white ${MODAL_ACTION}`}
             onClick={async () => {
               setClearing(true);
               await queue.clearAll();
@@ -469,27 +575,29 @@ export default function AdminPage() {
 
       <dialog
         ref={dialogRef}
-        className="modal"
+        className={MODAL}
         onClose={() => setPendingDelete(null)}
       >
         {pendingDelete && (
           <>
-            <h2 className="modal-title">Remove #{pendingDelete.id}?</h2>
-            <p className="modal-body">
+            <h2 className="mx-0 mt-0 mb-2 text-[1.2rem]">
+              Remove #{pendingDelete.id}?
+            </h2>
+            <p className="mx-0 mt-0 mb-5 text-muted">
               <strong>{pendingDelete.name}</strong> will be removed from the
               queue and from the CSV export. This cannot be undone.
             </p>
-            <div className="modal-actions">
+            <div className="flex flex-wrap justify-end gap-2 max-[480px]:flex-col-reverse">
               <button
                 type="button"
-                className="secondary"
+                className={`${SECONDARY} ${MODAL_ACTION}`}
                 onClick={() => setPendingDelete(null)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="danger-solid"
+                className={`bg-danger text-white ${MODAL_ACTION}`}
                 onClick={() => {
                   const entry = pendingDelete;
                   setPendingDelete(null);

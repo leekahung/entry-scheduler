@@ -13,6 +13,21 @@ const PHONE_MAX = 30;
 // once someone is close to the cap.
 const NAME_COUNTER_FROM = 60;
 
+const TICKET_EDGE: Record<QueueEntry["status"], string> = {
+  new: "border-l-new",
+  pending: "border-l-pending",
+  resolved: "border-l-resolved",
+};
+
+const BADGE_COLOR: Record<QueueEntry["status"], string> = {
+  new: "text-new",
+  pending: "text-pending",
+  resolved: "text-resolved",
+};
+
+const BADGE =
+  "whitespace-nowrap rounded-full border border-current px-2 py-[0.15rem] text-[0.75rem] font-bold uppercase tracking-[0.03em]";
+
 /** Public sign-in screen: enter a name, check in, watch your place in line. */
 export default function UserPage() {
   const [name, setName] = useState("");
@@ -116,14 +131,22 @@ export default function UserPage() {
   const ahead = mine ? queued.findIndex((entry) => entry.id === mine.id) : -1;
 
   return (
-    <main className="page">
-      <header className="page-head">
-        <h1>Check in</h1>
-        <p className="subtle">Add your name and someone will come help you.</p>
+    <main
+      data-scale="kiosk"
+      className="mx-auto flex max-w-[40rem] flex-col gap-5 pt-8 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] kiosk:max-w-[44rem]"
+    >
+      <header>
+        <h1 className="m-0 text-[1.6rem] kiosk:text-[2rem]">Check in</h1>
+        <p className="mt-1 mb-0 text-muted">
+          Add your name and someone will come help you.
+        </p>
       </header>
 
       {offline && (
-        <p className="offline-banner" role="status">
+        <p
+          className="m-0 rounded-lg border border-[#f0c48a] bg-[#fff4e5] px-[0.9rem] py-[0.6rem] text-[0.9rem] text-[#8a5200]"
+          role="status"
+        >
           Can&rsquo;t reach the server — this list may be out of date.
         </p>
       )}
@@ -132,34 +155,45 @@ export default function UserPage() {
           are helped, and announcing every change would talk over the visitor.
           Their own status is announced from the ticket below. */}
       {(beingHelped.length > 0 || upNext) && (
-        <section className="now-serving">
+        <section className="mt-2 flex flex-wrap justify-around gap-4 rounded-xl border border-border bg-surface px-5 py-4 text-center">
           {beingHelped.length > 0 && (
-            <div>
-              <p className="now-serving-label">
+            <div className="min-w-[8rem] flex-1">
+              <p className="m-0 text-[0.8rem] font-bold tracking-[0.08em] text-muted uppercase">
                 {beingHelped.length === 1
                   ? "Now being helped"
                   : `Now being helped (${beingHelped.length})`}
               </p>
-              <p className="now-serving-number">
+              <p className="m-0 mt-[0.15rem] text-[2.75rem] leading-[1.1] font-extrabold text-accent tabular-nums kiosk:text-[3.5rem]">
                 {beingHelped.map((entry) => `#${entry.id}`).join("  ")}
               </p>
             </div>
           )}
           {upNext && (
-            <div>
-              <p className="now-serving-label">Up next</p>
-              <p className="now-serving-number">#{upNext.id}</p>
+            <div className="min-w-[8rem] flex-1">
+              <p className="m-0 text-[0.8rem] font-bold tracking-[0.08em] text-muted uppercase">
+                Up next
+              </p>
+              <p className="m-0 mt-[0.15rem] text-[2.75rem] leading-[1.1] font-extrabold text-accent tabular-nums kiosk:text-[3.5rem]">
+                #{upNext.id}
+              </p>
             </div>
           )}
         </section>
       )}
 
       {mine ? (
-        <section className={`ticket ticket-${mine.status}`} aria-live="polite">
-          <p className="ticket-number">#{mine.id}</p>
-          <p className="ticket-name">{myName || mine.name}</p>
+        <section
+          className={`mt-2 flex flex-col gap-[0.35rem] rounded-xl border border-border border-l-[5px] bg-surface p-5 ${TICKET_EDGE[mine.status]}`}
+          aria-live="polite"
+        >
+          <p className="m-0 text-[1.9rem] leading-[1.1] font-extrabold tabular-nums kiosk:text-[2.5rem]">
+            #{mine.id}
+          </p>
+          <p className="m-0 text-[1.35rem] font-bold kiosk:text-[1.6rem]">
+            {myName || mine.name}
+          </p>
           {mine.scheduledFor && mine.status !== "resolved" && (
-            <p className="ticket-appointment">
+            <p className="mx-0 mt-1 mb-0 font-semibold text-accent">
               Appointment at{" "}
               {new Date(mine.scheduledFor).toLocaleString([], {
                 month: "short",
@@ -170,11 +204,11 @@ export default function UserPage() {
             </p>
           )}
           {mine.status === "resolved" ? (
-            <p className="ticket-status">
+            <p className="m-0 text-muted">
               You&rsquo;ve been helped. Thanks for stopping by!
             </p>
           ) : (
-            <p className="ticket-status">
+            <p className="m-0 text-muted">
               {mine.status === "pending"
                 ? "Someone is helping you now."
                 : !mine.due
@@ -186,12 +220,12 @@ export default function UserPage() {
                       : `${ahead} people ahead of you.`}
             </p>
           )}
-          <div className="ticket-actions">
+          <div className="mt-[0.35rem] flex flex-wrap items-center gap-3">
             {/* Only staff can take someone out of the line; this just clears
                 this device so the next person can join on it. */}
             <button
               type="button"
-              className="link-button"
+              className="self-start bg-transparent p-0 text-accent underline pointer-coarse:min-h-[2.75rem]"
               onClick={() => setConfirmingForget(true)}
             >
               Check someone else in
@@ -199,7 +233,10 @@ export default function UserPage() {
           </div>
         </section>
       ) : (
-        <form className="card" onSubmit={handleSubmit}>
+        <form
+          className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
+          onSubmit={handleSubmit}
+        >
           <label htmlFor="name">Your name</label>
           <input
             id="name"
@@ -217,7 +254,7 @@ export default function UserPage() {
           {name.length >= NAME_COUNTER_FROM && (
             <p
               id="name-count"
-              className={`counter${name.length >= NAME_MAX ? " counter-full" : ""}`}
+              className={`mt-[-0.25rem] mr-0 mb-0 ml-0 text-right text-[0.8rem] ${name.length >= NAME_MAX ? "font-semibold text-new" : "text-muted"}`}
             >
               {name.length >= NAME_MAX
                 ? `Character limit reached (${NAME_MAX})`
@@ -225,12 +262,12 @@ export default function UserPage() {
             </p>
           )}
 
-          <p className="subtle">
+          <p className="mt-1 mb-0 text-muted">
             The rest is optional — it saves time later, and only staff see it.
           </p>
 
-          <div className="field-row">
-            <div className="field">
+          <div className="flex flex-wrap gap-x-3 gap-y-2">
+            <div className="flex flex-[1_1_12rem] flex-col gap-2">
               <label htmlFor="dob">Date of birth</label>
               <input
                 id="dob"
@@ -240,7 +277,7 @@ export default function UserPage() {
                 max={todayLocal()}
               />
             </div>
-            <div className="field">
+            <div className="flex flex-[1_1_12rem] flex-col gap-2">
               <label htmlFor="phone">Phone number</label>
               <input
                 id="phone"
@@ -273,26 +310,32 @@ export default function UserPage() {
           <button type="submit" disabled={submitting || !name.trim()}>
             {submitting ? "Checking in…" : "Check in"}
           </button>
-          {error && <p className="error">{error}</p>}
+          {error && <p className="m-0 text-[0.9rem] text-danger">{error}</p>}
         </form>
       )}
 
-      <section className="card">
-        <h2>Currently waiting{loaded ? ` (${waiting.length})` : ""}</h2>
+      <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
+        <h2 className="mx-0 mt-0 mb-1 text-[1.15rem]">
+          Currently waiting{loaded ? ` (${waiting.length})` : ""}
+        </h2>
         {!loaded ? (
-          <p className="subtle">Loading the line…</p>
+          <p className="mt-1 mb-0 text-muted">Loading the line…</p>
         ) : waiting.length === 0 ? (
-          <p className="subtle">Nobody in line right now.</p>
+          <p className="mt-1 mb-0 text-muted">Nobody in line right now.</p>
         ) : (
-          <ul className="queue-list">
+          <ul className="m-0 flex list-none flex-col gap-[0.4rem] p-0 kiosk:text-[1.125rem]">
             {waiting.map((entry) => (
               <li
                 key={entry.id}
-                className={mine && entry.id === mine.id ? "is-me" : undefined}
+                className={`flex items-center gap-3 pointer-coarse:py-[0.15rem] ${
+                  mine && entry.id === mine.id ? "font-bold" : ""
+                }`}
               >
-                <span className="queue-number">#{entry.id}</span>
-                <span className="queue-name">{entry.name}</span>
-                <span className={`badge badge-${entry.status}`}>
+                <span className="min-w-[2.5rem] font-bold text-muted tabular-nums">
+                  #{entry.id}
+                </span>
+                <span className="flex-1">{entry.name}</span>
+                <span className={`${BADGE} ${BADGE_COLOR[entry.status]}`}>
                   {STATUS_LABEL[entry.status]}
                 </span>
               </li>
@@ -321,7 +364,7 @@ export default function UserPage() {
       />
 
       {/* Staff would otherwise have to know to type "#/admin" by hand. */}
-      <p className="staff-link">
+      <p className="m-0 text-center text-[0.85rem] text-muted">
         <a href="#/admin">Staff sign-in</a>
       </p>
     </main>

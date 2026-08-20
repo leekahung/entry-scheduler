@@ -58,15 +58,18 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
   }
 
   return (
-    <form className="card booking-form" onSubmit={handleSubmit}>
-      <h2>Book someone in</h2>
-      <p className="subtle">
+    <form
+      className="mb-4 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
+      onSubmit={handleSubmit}
+    >
+      <h2 className="mx-0 mt-0 mb-1 text-[1.15rem]">Book someone in</h2>
+      <p className="mt-1 mb-0 text-muted">
         Leave the time blank for a walk-up. An appointment joins the same line
         at its start time.
       </p>
 
-      <div className="field-row">
-        <div className="field">
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
           <label htmlFor="booking-name">Client name</label>
           <input
             id="booking-name"
@@ -76,7 +79,7 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
             required
           />
         </div>
-        <div className="field">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
           <label htmlFor="booking-when">Appointment time</label>
           <input
             id="booking-when"
@@ -87,8 +90,8 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
         </div>
       </div>
 
-      <div className="field-row">
-        <div className="field">
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
           <label htmlFor="booking-priority">Triage level</label>
           <select
             id="booking-priority"
@@ -104,7 +107,7 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
             ))}
           </select>
         </div>
-        <div className="field">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
           <label htmlFor="booking-phone">Phone number</label>
           <input
             id="booking-phone"
@@ -116,8 +119,8 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
         </div>
       </div>
 
-      <div className="field-row">
-        <div className="field">
+      <div className="flex flex-wrap gap-x-3 gap-y-2">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
           <label htmlFor="booking-dob">Date of birth</label>
           <input
             id="booking-dob"
@@ -127,7 +130,7 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
             max={todayLocal()}
           />
         </div>
-        <div className="field">
+        <div className="flex flex-[1_1_12rem] flex-col gap-2">
           <label htmlFor="booking-gender">Gender</label>
           <select
             id="booking-gender"
@@ -171,11 +174,19 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
         rows={2}
       />
 
-      <div className="note-editor-actions">
-        <button type="button" className="secondary" onClick={handleCancel}>
+      <div className="mt-2 flex max-w-[44rem] flex-wrap items-center justify-end gap-2 card-mode:justify-stretch">
+        <button
+          type="button"
+          className="border-border bg-surface text-text card-mode:flex-1"
+          onClick={handleCancel}
+        >
           Cancel
         </button>
-        <button type="submit" disabled={saving || !draft.name.trim()}>
+        <button
+          type="submit"
+          className="card-mode:flex-1"
+          disabled={saving || !draft.name.trim()}
+        >
           {saving ? "Booking…" : "Add to queue"}
         </button>
       </div>

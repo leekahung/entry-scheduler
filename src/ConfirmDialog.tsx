@@ -35,14 +35,27 @@ export default function ConfirmDialog({
   }, [open]);
 
   return (
-    <dialog ref={ref} className="modal" onClose={onCancel}>
-      <h2 className="modal-title">{title}</h2>
-      <p className="modal-body">{body}</p>
-      <div className="modal-actions">
-        <button type="button" className="secondary" onClick={onCancel}>
+    <dialog
+      ref={ref}
+      className="m-auto w-[calc(100%-2rem)] max-w-[26rem] rounded-xl border border-border bg-surface p-6 text-text backdrop:bg-black/45"
+      onClose={onCancel}
+    >
+      <h2 className="mx-0 mt-0 mb-2 text-[1.2rem]">{title}</h2>
+      <p className="mx-0 mt-0 mb-5 text-muted">{body}</p>
+      {/* Under 480px the buttons stack and the destructive one sits last. */}
+      <div className="flex flex-wrap justify-end gap-2 max-[480px]:flex-col-reverse">
+        <button
+          type="button"
+          className="border-border bg-surface text-text max-[480px]:w-full"
+          onClick={onCancel}
+        >
           {cancelLabel}
         </button>
-        <button type="button" className="danger-solid" onClick={onConfirm}>
+        <button
+          type="button"
+          className="bg-danger text-white max-[480px]:w-full"
+          onClick={onConfirm}
+        >
           {confirmLabel}
         </button>
       </div>
