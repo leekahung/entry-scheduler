@@ -67,3 +67,22 @@ export function todayLocal(): string {
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
 }
+
+/**
+ * The earliest month still on the board that is not the current one, as a
+ * "March 2026" label, or "" when everything is from this month.
+ * Local months, not UTC: an entry taken late on the 31st belongs to the month
+ * the clinic was open, not the one UTC had already rolled into.
+ */
+export function unclosedMonth(createdAts: string[]): string {
+  const now = new Date();
+  const thisMonth = now.getFullYear() * 12 + now.getMonth();
+  let earliest: Date | null = null;
+  for (const iso of createdAts) {
+    const at = new Date(iso);
+    if (at.getFullYear() * 12 + at.getMonth() >= thisMonth) continue;
+    if (!earliest || at < earliest) earliest = at;
+  }
+  if (!earliest) return "";
+  return earliest.toLocaleString([], { month: "long", year: "numeric" });
+}
