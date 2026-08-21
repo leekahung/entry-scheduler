@@ -57,8 +57,10 @@ full name this screen ever holds is the reader's own.
 
 ## The staff console
 
-<http://localhost:5173/#/admin> — one shared passcode, held in `sessionStorage`
-for that tab. The console is refused outright from outside the local network
+<http://localhost:5173/#/admin> — staff sign in with their own Google account
+where that is configured, otherwise with one shared passcode held in
+`sessionStorage` for that tab. See [Who may use the console](#who-may-use-the-console).
+Either way the console is refused outright from outside the local network
 unless `ALLOW_REMOTE_ADMIN=true`.
 
 **Helping as** — the name recorded against everyone you help. Type it once; it
@@ -100,10 +102,9 @@ staff out of signing back in.
 ## Development
 
 Node 20.12 or newer (the dev server uses `--env-file-if-exists`).
-`better-sqlite3` is a native module, so `npm install` compiles it.
 
 ```bash
-cp .env.example .env      # then set ADMIN_PASSCODE — at least 12 characters
+cp .env.example .env      # then set ADMIN_PASSCODE and GOOGLE_SHEETS_ID
 npm run boot              # installs dependencies, then starts both servers
 ```
 
@@ -116,13 +117,22 @@ does the same without re-checking dependencies.
 - Visitors: <http://localhost:5173>
 - Staff: <http://localhost:5173/#/admin>
 
-The server refuses to start without `ADMIN_PASSCODE`, and refuses a passcode
-under 12 characters — it is the whole security of the console. To run a
-throwaway instance without touching your real queue, point both at somewhere
-else:
+The server refuses to start when its configuration would be unsafe or useless:
+
+- without `GOOGLE_SHEETS_ID`, since that spreadsheet *is* the database;
+- without `ADMIN_PASSCODE` — or with one under 12 characters — **unless**
+  Google sign-in is configured, in which case the passcode is neither needed
+  nor read;
+- with `SESSION_SECRET` shorter than 32 characters, because that key signs the
+  staff session cookie;
+- with `ALLOW_REMOTE_ADMIN=true` but no Google sign-in configured, which would
+  leave one shared passcode guarding a console open to the internet.
+
+To run a throwaway instance without touching your real queue, point it at a
+scratch spreadsheet:
 
 ```bash
-ADMIN_PASSCODE=scratch-passcode-123 DB_FILE=/tmp/scratch.db npm run dev
+ADMIN_PASSCODE=scratch-passcode-123 GOOGLE_SHEETS_ID=some-other-sheet npm run dev
 ```
 
 To let people join from their phones, run Vite with `--host` and share the
@@ -141,31 +151,136 @@ npm run build     # builds the frontend to dist/ and compiles the server to dist
 npm start         # node dist-server/index.js — no tsx, no dev dependencies
 ```
 
+There is also a `Dockerfile` — a multi-stage build that ships only `dist/`,
+`dist-server/` and production dependencies, and runs as an unprivileged user.
+It starts `node` directly rather than `npm start`, so the server receives
+`SIGTERM` itself and can finish an in-flight write before the container stops.
+
+```bash
+docker build -t entry-scheduler .
+docker run -p 8080:8080 --env-file .env entry-scheduler   # see the note below
+```
+
+`--env-file` cannot carry a multi-line value, so a `GOOGLE_SA_KEY` in the file
+arrives empty. Pass that one with `-e GOOGLE_SA_KEY="$GOOGLE_SA_KEY"`, or run
+without a key and let the host's own service account authenticate.
+
 Set these on the host:
 
 | Variable         | Notes                                                    |
 | ---------------- | -------------------------------------------------------- |
-| `ADMIN_PASSCODE` | Required. The server refuses to start without it.        |
+| `ADMIN_PASSCODE` | Required unless Google sign-in is configured, and at least 12 characters. |
 | `PORT`           | Most hosts set this for you; defaults to 3001.           |
-| `DB_FILE`        | Point at a **persistent disk**, e.g. `/data/entries.db`. |
-| `GOOGLE_SHEETS_ID` | Optional. Enables "Send to Google Sheet"; the id from the sheet URL. |
+| `GOOGLE_SHEETS_ID` | Required. The queue is stored here; the id from the sheet URL. |
 | `GOOGLE_SHEETS_TAB` | Optional. Tab to write, defaults to `Sign In Log`. |
+| `GOOGLE_STAFF_TAB` | Optional. Tab holding the staff list, defaults to `Staff`. |
+| `GOOGLE_OAUTH_CLIENT_ID` | Turns on Google sign-in for staff. With it set, the passcode is no longer accepted. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | From the same OAuth client. |
+| `SESSION_SECRET` | Signs the staff session cookie. At least 32 random characters. |
+| `ADMIN_EMAILS` | Owners who can never be locked out, comma-separated. |
+| `OAUTH_REDIRECT_URI` | Optional. Defaults to `<this host>/api/auth/callback`. |
+| `TRUST_PROXY` | Number of proxy hops to trust, e.g. `1` on Cloud Run. Leave unset anywhere the port is reachable directly. |
+| `ALLOW_REMOTE_ADMIN` | `true` opens the console to any address. Requires Google sign-in; the server refuses to start otherwise. |
 | `GOOGLE_SA_EMAIL` | Only when using a downloaded key. Service account `client_email`. |
 | `GOOGLE_SA_KEY`  | Only when using a downloaded key. `private_key`, newlines as `\n`. |
 
 Build command `npm run build`, start command `npm start`.
 
-The database is a SQLite file. On hosts with ephemeral filesystems (the default
-on Render, Railway, Fly) the queue is wiped on every deploy and restart unless
-`DB_FILE` points at a mounted volume. This is the most common way this setup
-breaks.
+There is no local database and nothing to mount: the queue lives entirely in
+the spreadsheet, so an ephemeral filesystem costs nothing.
 
-## Google Sheets mirror
+## Running on Cloud Run
 
-Staff who do not want to read a database can get the same log as a spreadsheet.
-"Send to Google Sheet" in the console rewrites one tab with the whole log — the
-same columns as the CSV export. SQLite stays the source of truth; the sheet is
-a copy, so editing it does not change the queue.
+Nothing needs restructuring — the container listens on `$PORT` and serves the
+API and the frontend together. Four settings matter:
+
+- **`--max-instances=1`.** Every write rewrites the whole tab, and the write
+  queue that keeps those from colliding lives in one process's memory. Two
+  instances would overwrite each other with nothing in the Sheets API to stop
+  them. The work is waiting on Google, not on CPU, so one instance with high
+  concurrency is the right shape.
+- **`TRUST_PROXY=1`.** Without it the app sees Google's front end as the client
+  — a private address — and cannot tell visitors apart. It refuses to treat a
+  forwarded request as on-network in that state, so the console would reject
+  everyone rather than admit everyone.
+- **`ALLOW_REMOTE_ADMIN=true`**, since no real client is on the local network.
+  The server refuses to start in that state unless Google sign-in is
+  configured, so the console cannot end up guarded by a shared passcode alone.
+- **Credentials from the attached service account.** Grant the runtime service
+  account the Sheets scope and share the spreadsheet with its address; leave
+  `GOOGLE_SA_EMAIL` and `GOOGLE_SA_KEY` unset. Put `ADMIN_PASSCODE` (if you
+  still use one) and `SESSION_SECRET` in Secret Manager.
+
+Verify a write against a scratch spreadsheet before the real cutover: the
+metadata server issues `cloud-platform`-scoped tokens, and Sheets does not
+document that scope as accepted. If it is refused, fall back to a downloaded
+key in `GOOGLE_SA_KEY`.
+
+## Who may use the console
+
+By default the console is behind one shared passcode. Set the four
+`GOOGLE_OAUTH_*` / `SESSION_SECRET` / `ADMIN_EMAILS` variables and staff sign in
+with their own Google account instead; the passcode stops being accepted the
+moment those are present.
+
+Access has two levels:
+
+- **Staff** work the queue.
+- **Owners** do that and can change who has access, from the "Staff access"
+  panel in the console.
+
+`ADMIN_EMAILS` names owners in the environment. They are always owners and
+cannot be removed through the console, so a mistake in the list can never lock
+everyone out. Everyone else lives in the `Staff` tab of the same spreadsheet,
+which the app creates on first use.
+
+Managing access is deliberately unavailable on a passcode-only deployment:
+everybody there shares one credential, so there is no "certain staff" to trust
+with it.
+
+Setting it up:
+
+1. In Google Cloud, configure the **OAuth consent screen** (Internal, if this
+   is a Workspace org).
+2. Create an **OAuth client ID** of type *Web application*.
+3. Add `<your host>/api/auth/callback` as an authorised redirect URI — for
+   local work that is `http://localhost:3001/api/auth/callback`.
+4. Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, a long random
+   `SESSION_SECRET`, and `ADMIN_EMAILS`.
+
+Sessions last 12 hours and live in an HttpOnly, SameSite=Lax cookie; nothing is
+stored on the device.
+
+## The spreadsheet is the database
+
+One tab holds the queue. The eleven human columns of the sign-in log come
+first, then the bookkeeping the log has no room for — `id`, `status`,
+`createdAt`, `updatedAt`, `helpedBy`, `note`, `adminNote`, `priority`,
+`scheduledFor` — so a row can be read back as a whole entry.
+
+Because it is the store rather than a copy, editing the tab edits the queue —
+but only in the cells the app reads back. Every change rewrites the whole tab
+in the app's own column order, so anything else you type there is overwritten
+by the next check-in or save. Specifically:
+
+- **Kept:** edits to a value column the app reads — a name, a phone number, a
+  case type, `status`, `priority`, `scheduledFor`, and so on.
+- **Overwritten:** a column you add yourself, anywhere in the tab.
+- **Overwritten:** the `Date` and `Notes` columns. Both are derived — `Date`
+  from `createdAt`, `Notes` from the visitor note and the admin note joined
+  together — so neither is read back. Type in the `note` or `adminNote`
+  columns instead, or use the console.
+
+Rows without a numeric `id` are ignored, so a note typed into a spare row is
+harmless. A hand-edited `status` or `priority` that is not a recognised value
+falls back to `new` / `routine` rather than breaking the board.
+
+Two consequences worth knowing:
+
+- **"Clear all" empties the spreadsheet too.** The CSV download is the only
+  record that survives it, which is why the confirmation offers it.
+- Reads are cached for five seconds. An edit made directly in Google Sheets
+  shows up in the console within that, not instantly.
 
 Setting it up:
 
@@ -196,38 +311,52 @@ clinic's confidentiality policy before switching it on.
 
 Two other things to get right before real use:
 
-- **Serve over HTTPS.** The admin passcode travels as a plaintext header, so on
-  plain HTTP anyone on the network path can read it. Every managed host
+- **Serve over HTTPS.** On a passcode deployment the credential travels as a
+  plaintext header; with Google sign-in the session cookie does. Either way,
+  plain HTTP hands it to anyone on the network path. Every managed host
   terminates TLS for you; just don't skip it.
-- **Set a strong `ADMIN_PASSCODE`.** Once deployed the URL is publicly
-  reachable. Failed admin requests are rate limited — 30 per 15 minutes per
-  address, successful ones not counted — but that only slows guessing down.
-
-If you deploy with Docker, `better-sqlite3` is a native module and must be
-rebuilt inside the image — run `npm ci` in the container rather than copying
-`node_modules` from your machine.
+- **Prefer Google sign-in to the shared passcode.** Once deployed the URL is
+  publicly reachable, and a passcode is one secret shared by everyone with no
+  way to revoke one person. Failed admin requests are rate limited — 30 per 15
+  minutes per address, successful ones not counted — but that only slows
+  guessing down.
+- **Set `TRUST_PROXY` when, and only when, something terminates in front of
+  you.** Behind a proxy the app otherwise sees the proxy's own private address
+  as the client and cannot tell visitors apart, which both defeats the
+  local-network rule and collapses the rate limits onto a single key. A request
+  arriving with an `X-Forwarded-For` header the app was not told to trust is
+  treated as off-network rather than guessed about.
 
 ## Who can do what
 
 Permissions are enforced on the server, not just hidden in the UI — the admin
-routes reject any request without the `x-admin-passcode` header, so a visitor
-cannot change a status or pull the export by calling the API directly.
+routes reject any request without a valid staff session (a Google sign-in
+cookie, or the `x-admin-passcode` header where the passcode is still in use),
+so a visitor cannot change a status or pull the export by calling the API
+directly.
 
-| Action                                    | Visitor | Admin |
-| ----------------------------------------- | ------- | ----- |
-| Check in with a name                      | ✅      | ✅    |
-| Give DOB, phone, gender                   | ✅      | ✅    |
-| Set the case type                         | ❌      | ✅    |
-| Book someone in / set an appointment      | ❌      | ✅    |
-| Set a triage level                        | ❌      | ✅    |
-| Record appointment / legal outcome        | ❌      | ✅    |
-| See who is waiting (short names + status) | ✅      | ✅    |
-| See full names                            | ❌      | ✅    |
-| Change a status / flag as helped          | ❌      | ✅    |
-| Write or read notes                       | ❌      | ✅    |
-| See timestamps and who helped             | ❌      | ✅    |
-| Export CSV                                | ❌      | ✅    |
-| Remove an entry                           | ❌      | ✅    |
+| Action                                    | Visitor | Staff | Owner |
+| ----------------------------------------- | ------- | ----- | ----- |
+| Check in with a name                      | ✅      | ✅    | ✅    |
+| Give DOB, phone, gender                   | ✅      | ✅    | ✅    |
+| Set the case type                         | ❌      | ✅    | ✅    |
+| Book someone in / set an appointment      | ❌      | ✅    | ✅    |
+| Set a triage level                        | ❌      | ✅    | ✅    |
+| Record appointment / legal outcome        | ❌      | ✅    | ✅    |
+| See who is waiting (short names + status) | ✅      | ✅    | ✅    |
+| See full names                            | ❌      | ✅    | ✅    |
+| Change a status / flag as helped          | ❌      | ✅    | ✅    |
+| Write or read notes                       | ❌      | ✅    | ✅    |
+| See timestamps and who helped             | ❌      | ✅    | ✅    |
+| Export CSV                                | ❌      | ✅    | ✅    |
+| Remove an entry                           | ❌      | ✅    | ✅    |
+| Clear the whole queue                     | ❌      | ✅    | ✅    |
+| Grant or revoke console access            | ❌      | ❌    | ✅    |
+
+The owner column applies only where Google sign-in is configured. On a
+passcode deployment everyone who has the passcode is "staff", and managing
+access is switched off entirely — there is no per-person identity to trust
+with it.
 
 Nobody can take themselves out of the line: a visitor who leaves is removed by
 staff, so the log still records that they came in.
@@ -271,14 +400,14 @@ formulas.
 
 ## Notes and limits
 
-- Data lives in a local SQLite file (`entries.db`, configurable via `DB_FILE`).
-- **Sign out** clears the admin session for that tab. Because the passcode is
-  shared, signing out protects the laptop from the next person who walks up — it
-  does not revoke the code itself. If a passcode leaks, change `ADMIN_PASSCODE`
-  and restart; that is the only way to lock someone out.
-- The admin screen is gated by one shared passcode held in `sessionStorage`;
-  there are no per-user accounts, so "helped by" is a name typed by staff, not a
-  verified identity.
+- Data lives in the Google Sheet named by `GOOGLE_SHEETS_ID`; there is no
+  local database. If Google is unreachable, so is the queue.
+- **Sign out** clears the staff session for that tab. With Google sign-in an
+  owner can revoke one person from the Staff access panel and it takes effect
+  within about 30 seconds. With the shared passcode there is nothing to revoke
+  per person: change `ADMIN_PASSCODE` and restart, which locks out everyone.
+- "Helped by" is a name typed by staff rather than the signed-in identity, even
+  where Google sign-in is on.
 - Both screens poll every 5 seconds rather than using websockets.
 - Serve over HTTPS before using this anywhere beyond a trusted local network —
   the passcode is sent as a plain header.
