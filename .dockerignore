@@ -1,0 +1,25 @@
+# Installed inside the image, never copied from the host.
+node_modules
+
+# Built inside the image; stale local output must not shadow it.
+dist
+dist-server
+*.tsbuildinfo
+
+# Secrets stay out of the build context entirely — env comes from the service.
+.env
+.env.*
+
+.git
+.gitignore
+
+# Local noise with no place in an image.
+*.log
+*.csv
+.playwright-mcp
+.claude
+.DS_Store
+
+# Reference material for humans, not the running service.
+docs
+README.md
