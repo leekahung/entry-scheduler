@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { GENDERS, type Gender } from "../server/codes";
 import { fetchQueue, joinQueue, STATUS_LABEL, type QueueEntry } from "./api";
-import ConfirmDialog from "./ConfirmDialog";
 import { todayLocal } from "./time";
 
 const POLL_MS = 5000;
@@ -41,7 +40,6 @@ export default function UserPage() {
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [confirmingForget, setConfirmingForget] = useState(false);
   const [offline, setOffline] = useState(false);
   // Until the first fetch lands, an empty queue is unknown, not empty.
   const [loaded, setLoaded] = useState(false);
@@ -222,11 +220,13 @@ export default function UserPage() {
           )}
           <div className="mt-[0.35rem] flex flex-wrap items-center gap-3">
             {/* Only staff can take someone out of the line; this just clears
-                this device so the next person can join on it. */}
+                this device so the next person can join on it. Deliberately
+                unconfirmed: on a shared tablet the next visitor is standing
+                there waiting, and nothing here is destructive. */}
             <button
               type="button"
               className="self-start bg-transparent p-0 text-accent underline pointer-coarse:min-h-[2.75rem]"
-              onClick={() => setConfirmingForget(true)}
+              onClick={forgetMyEntry}
             >
               Check someone else in
             </button>
@@ -343,25 +343,6 @@ export default function UserPage() {
           </ul>
         )}
       </section>
-
-      {/* Only this device forgets the ticket — the entry stays in the queue,
-          but nothing on screen can find its way back to it. */}
-      <ConfirmDialog
-        open={confirmingForget}
-        title="Hand this device to someone else?"
-        body={
-          myName
-            ? `You are checked in as ${myName}. This screen will stop showing your place in line — you stay in the queue, but this device will not be able to find your number again.`
-            : "This screen will stop showing your place in line. You stay in the queue, but this device will not be able to find your number again."
-        }
-        confirmLabel="Check someone else in"
-        cancelLabel="Keep my place on screen"
-        onConfirm={() => {
-          setConfirmingForget(false);
-          forgetMyEntry();
-        }}
-        onCancel={() => setConfirmingForget(false)}
-      />
 
       {/* Staff would otherwise have to know to type "#/admin" by hand. */}
       <p className="m-0 text-center text-[0.85rem] text-muted">
