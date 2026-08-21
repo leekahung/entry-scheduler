@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   downloadCsv,
-  syncSheet,
   missingForLog,
   PRIORITIES,
   PRIORITY_LABEL,
@@ -16,6 +15,7 @@ import { minutesAgo, unclosedMonth } from "./time";
 import type { EntryChanges } from "./useEntries";
 import { useAdminSession } from "./useAdminSession";
 import { useEntries } from "./useEntries";
+import StaffAccess from "./StaffAccess";
 
 // One or two failures is someone fumbling their own passcode; a handful in a
 // quarter hour is worth staff looking up.
@@ -42,7 +42,7 @@ const REMAINING_WARN_FROM = 5;
 /** Staff console: work the queue, book people in, export the full sheet. */
 export default function AdminPage() {
   const session = useAdminSession();
-  const { passcode, unlocked } = session;
+  const { passcode, unlocked, sheetUrl } = session;
   const queue = useEntries(passcode, unlocked);
 
   const [helpedBy, setHelpedBy] = useState(
@@ -60,8 +60,6 @@ export default function AdminPage() {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [downloadError, setDownloadError] = useState("");
-  const [syncing, setSyncing] = useState(false);
-  const [syncNote, setSyncNote] = useState("");
   const [query, setQuery] = useState("");
   const [triage, setTriage] = useState<Priority | "">("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
@@ -108,31 +106,10 @@ export default function AdminPage() {
     setShowBooking(false);
   }
 
-  const sendToSheet = async () => {
-    setSyncing(true);
-    setSyncNote("");
-    setDownloadError("");
-    try {
-      const rows = await syncSheet(passcode);
-      setSyncNote(
-        `Spreadsheet updated — ${rows} ${rows === 1 ? "entry" : "entries"}.`,
-      );
-    } catch (error) {
-      setDownloadError(
-        error instanceof Error
-          ? error.message
-          : "Could not update the spreadsheet.",
-      );
-    }
-    setSyncing(false);
-  };
-
   const exportSheet = () => {
     // Cleared first, or a failure from an earlier attempt sits on screen
-    // looking like it belongs to this one. Same for the sync note, which
-    // would otherwise read as confirmation of this download.
+    // looking like it belongs to this one.
     setDownloadError("");
-    setSyncNote("");
     return downloadCsv(passcode).catch(() =>
       setDownloadError("Could not download the spreadsheet."),
     );
@@ -144,41 +121,67 @@ export default function AdminPage() {
         data-scale="kiosk"
         className="mx-auto flex max-w-[24rem] flex-col gap-5 pt-8 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] kiosk:max-w-[44rem]"
       >
-        <form
-          className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            session.unlock();
-          }}
-        >
-          <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
-            Staff sign-in
-          </h1>
-          <p className="mt-1 mb-0 text-muted">
-            Enter the staff passcode to manage the help queue.
-          </p>
-          <label htmlFor="passcode">Passcode</label>
-          <input
-            id="passcode"
-            type="password"
-            value={passcode}
-            onChange={(event) => session.setPasscode(event.target.value)}
-            autoComplete="current-password"
-            required
-          />
-          <button type="submit">Unlock</button>
-          {session.error && (
-            <p className="m-0 text-[0.9rem] text-danger">{session.error}</p>
-          )}
-          {session.attemptsLeft !== null &&
-            session.attemptsLeft <= REMAINING_WARN_FROM && (
-              <p className="mx-0 mt-[-0.35rem] mb-0 text-[0.85rem] text-[#8a5200]">
-                {session.attemptsLeft === 0
-                  ? "No attempts left — this device is now locked for 15 minutes."
-                  : `${session.attemptsLeft} ${session.attemptsLeft === 1 ? "attempt" : "attempts"} left before this device is locked out for 15 minutes.`}
-              </p>
+        {session.mode === null ? (
+          // Which sign-in to offer is the server's answer, so wait for it
+          // rather than flashing a passcode box that may be wrong.
+          <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
+            <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
+              Staff sign-in
+            </h1>
+            <p className="m-0 text-muted">{session.error || "Connecting…"}</p>
+          </div>
+        ) : session.mode === "google" ? (
+          <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
+            <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
+              Staff sign-in
+            </h1>
+            <p className="mt-1 mb-0 text-muted">
+              Sign in with your work Google account to manage the help queue.
+            </p>
+            <button type="button" onClick={session.signInWithGoogle}>
+              Sign in with Google
+            </button>
+            {session.error && (
+              <p className="m-0 text-[0.9rem] text-danger">{session.error}</p>
             )}
-        </form>
+          </div>
+        ) : (
+          <form
+            className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              session.unlock();
+            }}
+          >
+            <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
+              Staff sign-in
+            </h1>
+            <p className="mt-1 mb-0 text-muted">
+              Enter the staff passcode to manage the help queue.
+            </p>
+            <label htmlFor="passcode">Passcode</label>
+            <input
+              id="passcode"
+              type="password"
+              value={passcode}
+              onChange={(event) => session.setPasscode(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+            <button type="submit">Unlock</button>
+            {session.error && (
+              <p className="m-0 text-[0.9rem] text-danger">{session.error}</p>
+            )}
+            {session.attemptsLeft !== null &&
+              session.attemptsLeft <= REMAINING_WARN_FROM && (
+                <p className="mx-0 mt-[-0.35rem] mb-0 text-[0.85rem] text-[#8a5200]">
+                  {session.attemptsLeft === 0
+                    ? "No attempts left — this device is now locked for 15 minutes."
+                    : `${session.attemptsLeft} ${session.attemptsLeft === 1 ? "attempt" : "attempts"} left before this device is locked out for 15 minutes.`}
+                </p>
+              )}
+          </form>
+        )}
         <p className="m-0 text-center text-[0.9rem] text-muted">
           Here to get help instead? <a href="#/">Check in</a>
         </p>
@@ -263,6 +266,11 @@ export default function AdminPage() {
             scheduled later ·{" "}
             {entries.filter((e) => e.status === "resolved").length} done
           </p>
+          {session.email && (
+            <p className="mt-1 mb-0 text-[0.85rem] text-muted">
+              Signed in as {session.email}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -272,17 +280,17 @@ export default function AdminPage() {
           >
             {showBooking ? "Close" : "Book someone in"}
           </button>
-          <button type="button" className={SECONDARY} onClick={exportSheet}>
-            Download spreadsheet
-          </button>
-          <button
-            type="button"
-            className={SECONDARY}
-            onClick={sendToSheet}
-            disabled={syncing}
-          >
-            {syncing ? "Sending…" : "Send to Google Sheet"}
-          </button>
+          {sheetUrl && (
+            <a
+              data-button
+              className={SECONDARY}
+              href={sheetUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open spreadsheet
+            </a>
+          )}
           <button
             type="button"
             className={SECONDARY}
@@ -312,6 +320,8 @@ export default function AdminPage() {
           onCancel={() => setShowBooking(false)}
         />
       )}
+
+      {session.role === "owner" && <StaffAccess passcode={passcode} />}
 
       {/* Reads as "who am I", not as another entry field. */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
@@ -356,14 +366,6 @@ export default function AdminPage() {
         </p>
       )}
 
-      {/* Hidden while the clear-all dialog is up, which shows its own copy on
-          top of the backdrop. */}
-      {syncNote && !confirmingClear && (
-        <p className="m-0 text-[0.9rem] text-resolved" role="status">
-          {syncNote}
-        </p>
-      )}
-
       {(queue.actionError || downloadError) && !confirmingClear && (
         <p className="m-0 text-[0.9rem] text-danger">
           {queue.actionError || downloadError}
@@ -377,7 +379,8 @@ export default function AdminPage() {
         >
           <strong>{monthToClose} is not closed out yet.</strong> Entries from
           then are still on the board. Download the spreadsheet before clearing
-          — clearing deletes the records, and the CSV is the only copy kept.
+          — clearing empties the Google Sheet too, and the CSV is the only copy
+          kept.
         </p>
       )}
 
@@ -533,8 +536,8 @@ export default function AdminPage() {
         </h2>
         <p className="mx-0 mt-0 mb-5 text-muted">
           This empties the board for a fresh start and numbering begins again at
-          #1. It cannot be undone — download the spreadsheet first if you need a
-          record of today.
+          #1. It clears the Google Sheet as well and cannot be undone — download
+          the spreadsheet first if you need a record of today.
         </p>
         {downloadError && (
           <p className="m-0 text-[0.9rem] text-danger">{downloadError}</p>
@@ -585,7 +588,7 @@ export default function AdminPage() {
             </h2>
             <p className="mx-0 mt-0 mb-5 text-muted">
               <strong>{pendingDelete.name}</strong> will be removed from the
-              queue and from the CSV export. This cannot be undone.
+              queue and deleted from the Google Sheet. This cannot be undone.
             </p>
             <div className="flex flex-wrap justify-end gap-2 max-[480px]:flex-col-reverse">
               <button

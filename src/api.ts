@@ -153,12 +153,95 @@ export async function clearAllEntries(passcode: string): Promise<number> {
   return body.removed;
 }
 
+export type AuthMode = { google: boolean };
+
+/** Whether this deployment signs staff in with Google or a shared passcode. */
+export async function fetchAuthMode(): Promise<AuthMode> {
+  return parse<AuthMode>(await fetch("/api/auth/mode"));
+}
+
+export type SignedIn = {
+  email: string;
+  role: StaffRole;
+  sheetUrl: string | null;
+};
+
+/** Who is signed in on this browser, or null when the cookie is absent. */
+export async function fetchSignedInEmail(): Promise<SignedIn | null> {
+  const res = await fetch("/api/auth/me");
+  if (!res.ok) return null;
+  const body = (await res.json()) as Partial<SignedIn>;
+  return body.email
+    ? {
+        email: body.email,
+        role: body.role === "owner" ? "owner" : "staff",
+        sheetUrl: body.sheetUrl ?? null,
+      }
+    : null;
+}
+
+export async function signOutOfGoogle(): Promise<void> {
+  await fetch("/api/auth/logout", { method: "POST" });
+}
+
+export type StaffRole = "owner" | "staff";
+
+export type StaffMember = {
+  email: string;
+  role: StaffRole;
+  addedBy: string;
+  addedAt: string;
+};
+
+export type StaffList = {
+  you: { email: string; role: StaffRole } | null;
+  /** Owners set in the server's environment; not removable from the console. */
+  bootstrapOwners: string[];
+  members: StaffMember[];
+};
+
+export async function fetchStaff(passcode: string): Promise<StaffList> {
+  return parse<StaffList>(
+    await fetch("/api/admin/staff", { headers: adminHeaders(passcode) }),
+  );
+}
+
+export async function addStaff(
+  passcode: string,
+  email: string,
+  role: StaffRole,
+): Promise<StaffMember> {
+  return parse<StaffMember>(
+    await fetch("/api/admin/staff", {
+      method: "POST",
+      headers: adminHeaders(passcode),
+      body: JSON.stringify({ email, role }),
+    }),
+  );
+}
+
+export async function removeStaff(
+  passcode: string,
+  email: string,
+): Promise<void> {
+  const res = await fetch(`/api/admin/staff/${encodeURIComponent(email)}`, {
+    method: "DELETE",
+    headers: adminHeaders(passcode),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string };
+    throw new ApiError(body?.error ?? "Could not remove access.", res.status);
+  }
+}
+
 export type PasscodeResult = {
   accepted: boolean;
   /** Server-side lockout, not a verdict on the passcode itself. */
   lockedOut: boolean;
   /** Tries left before lockout, or null if the server didn't say. */
   remaining: number | null;
+  /** The clinic's spreadsheet, or null when Sheets is not configured. */
+  sheetUrl: string | null;
 };
 
 /**
@@ -174,10 +257,12 @@ export async function verifyPasscode(
     headers: adminHeaders(passcode),
   });
   const remaining = res.headers.get("ratelimit-remaining");
+  const body = res.ok ? await res.json().catch(() => null) : null;
   return {
     accepted: res.ok,
     lockedOut: res.status === 429,
     remaining: remaining === null ? null : Number(remaining),
+    sheetUrl: (body?.sheetUrl as string | null) ?? null,
   };
 }
 
@@ -286,22 +371,6 @@ export async function downloadCsv(passcode: string): Promise<void> {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
-
-/** Mirrors the whole log into the clinic's Google Sheet. */
-export async function syncSheet(passcode: string): Promise<number> {
-  const res = await fetch("/api/admin/sheets-sync", {
-    method: "POST",
-    headers: adminHeaders(passcode),
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) {
-    throw new ApiError(
-      body?.error ?? `Sheets sync failed (${res.status})`,
-      res.status,
-    );
-  }
-  return (body?.rows as number) ?? 0;
 }
 
 /**

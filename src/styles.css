@@ -88,12 +88,16 @@
   input:focus-visible,
   select:focus-visible,
   textarea:focus-visible,
+  a[data-button]:focus-visible,
   button:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
 
-  button {
+  /* `a[data-button]` is a link that belongs in a row of buttons — it still
+     navigates, so it stays an anchor, but it must not read as stray text. */
+  button,
+  a[data-button] {
     font: inherit;
     font-weight: 600;
     padding: 0.55rem 0.9rem;
@@ -105,6 +109,13 @@
     cursor: pointer;
     /* Removes the double-tap-to-zoom delay on touch devices. */
     touch-action: manipulation;
+  }
+
+  a[data-button] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
   }
 
   button:disabled {
@@ -120,6 +131,7 @@
     input,
     select,
     textarea,
+    a[data-button],
     button {
       min-height: 3rem;
     }
@@ -128,7 +140,7 @@
   /* The kiosk variant's control sizing, for the same reason: every field on a
      visitor page scales up, not a hand-picked few. */
   @media (min-width: 700px) and (min-height: 600px) {
-    [data-scale="kiosk"] :is(input, select, textarea, button) {
+    [data-scale="kiosk"] :is(input, select, textarea, button, a[data-button]) {
       font-size: 1.125rem;
       min-height: 3.5rem;
     }
