@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toCsv } from "./csv.js";
+import { toCsv, toRows } from "./csv.js";
 import { makeEntry as entry } from "./entry.fixture.js";
 
 const HEADER =
@@ -70,5 +70,17 @@ describe("toCsv", () => {
     const csv = toCsv([entry({ name: "Jean-Luc Picard", note: "a+b@c" })]);
     expect(csv).toContain('"Jean-Luc Picard"');
     expect(csv).toContain('"a+b@c"');
+  });
+});
+
+describe("toRows", () => {
+  it("sends values unescaped, since the push is RAW rather than a formula", () => {
+    const [, row] = toRows([entry({ name: "=SUM(A1:A9)" })]);
+    expect(row[1]).toBe("=SUM(A1:A9)");
+  });
+
+  it("keeps the header out of the entry count", () => {
+    expect(toRows([]).length - 1).toBe(0);
+    expect(toRows([entry(), entry({ id: 2 })]).length - 1).toBe(2);
   });
 });

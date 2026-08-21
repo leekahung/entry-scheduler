@@ -1,7 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { toRows } from "./csv.js";
-import { makeEntry as entry } from "./entry.fixture.js";
-import { sheetRequests, sheetsConfig } from "./sheets.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { googleTransport, sheetsConfig } from "./sheets.js";
 
 const COMPLETE = {
   GOOGLE_SHEETS_ID: "sheet-123",
@@ -39,51 +37,129 @@ describe("sheetsConfig", () => {
   });
 });
 
-describe("toRows", () => {
-  it("sends values unescaped, since the push is RAW rather than a formula", () => {
-    const [, row] = toRows([entry({ name: "=SUM(A1:A9)" })]);
-    expect(row[1]).toBe("=SUM(A1:A9)");
-  });
-
-  it("keeps the header out of the entry count", () => {
-    expect(toRows([]).length - 1).toBe(0);
-    expect(toRows([entry(), entry({ id: 2 })]).length - 1).toBe(2);
-  });
-});
-
-describe("sheetRequests", () => {
+describe("googleTransport", () => {
   const config = {
     spreadsheetId: "sheet-123",
     tab: "Sign In Log",
     credentials: null,
   };
+  const token = async () => "test-token";
+  const ok = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
 
-  it("clears the tab before writing, so a re-sync leaves one copy", () => {
-    const { requests } = sheetRequests(config, [entry()]);
-    expect(requests.map((r) => r.method)).toEqual(["POST", "PUT"]);
-    expect(requests[0].path).toContain(":clear");
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it("escapes the tab name into the range", () => {
-    const { requests } = sheetRequests(config, []);
-    expect(requests[0].path).toBe(
-      "sheet-123/values/Sign%20In%20Log!A1%3AZ:clear",
+  /** Every fetch the transport made, as [url, init] pairs. */
+  function record(response: unknown = {}) {
+    const calls: [string, RequestInit][] = [];
+    vi.stubGlobal("fetch", (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return Promise.resolve(ok(response));
+    });
+    return calls;
+  }
+
+  it("quotes a tab name with spaces, which A1 notation requires", async () => {
+    const calls = record({ values: [] });
+    await googleTransport(config, token).read();
+    expect(calls[0][0]).toBe(
+      "https://sheets.googleapis.com/v4/spreadsheets/sheet-123/values/'Sign%20In%20Log'!A1%3AZ",
     );
   });
 
-  it("writes RAW so entry text is never evaluated as a formula", () => {
-    const { requests } = sheetRequests(config, []);
-    expect(requests[1].path).toContain("valueInputOption=RAW");
+  it("doubles a quote inside a tab name rather than ending the quoting", async () => {
+    const calls = record({ values: [] });
+    await googleTransport({ ...config, tab: "Ada's log" }, token).read();
+    expect(calls[0][0]).toContain("'Ada''s%20log'!A1%3AZ");
   });
 
-  it("sends the header plus one row per entry and counts only the entries", () => {
-    const { requests, rows } = sheetRequests(config, [
-      entry({ name: "Ada" }),
-      entry({ id: 2, name: "Bo" }),
-    ]);
-    const values = (requests[1].body as { values: string[][] }).values;
-    expect(values[0][1]).toBe("Client Name");
-    expect(values.map((row) => row[1])).toEqual(["Client Name", "Ada", "Bo"]);
-    expect(rows).toBe(2);
+  it("reads an empty tab as no rows rather than undefined", async () => {
+    record({});
+    await expect(googleTransport(config, token).read()).resolves.toEqual([]);
+  });
+
+  it("writes in one request, so a half-finished write cannot empty the tab", async () => {
+    const calls = record();
+    await googleTransport(config, token).write([["id"], [1]]);
+    expect(calls.map(([, init]) => init.method)).toEqual(["PUT"]);
+    expect(calls.every(([url]) => !url.includes(":clear"))).toBe(true);
+  });
+
+  it("blanks the rows a shorter log leaves behind", async () => {
+    const transport = googleTransport(config, token);
+    const calls = record({ values: [["id"], [1], [2], [3]] });
+    await transport.read();
+    await transport.write([["id"], [1]]);
+
+    const body = JSON.parse(String(calls[1][1].body)) as { values: string[][] };
+    // Header plus one row, then blanks covering the two rows that were there.
+    expect(body.values).toEqual([["id"], [1], [""], [""]]);
+  });
+
+  it("writes RAW so entry text is never evaluated as a formula", async () => {
+    const calls = record();
+    await googleTransport(config, token).write([["Client Name"], ["=SUM(A1)"]]);
+    expect(calls[0][0]).toContain("valueInputOption=RAW");
+    expect(JSON.parse(String(calls[0][1].body))).toEqual({
+      values: [["Client Name"], ["=SUM(A1)"]],
+    });
+  });
+
+  it("leaves a missing log tab as a loud error, never a silent empty queue", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: { message: "Unable to parse range: 'Typo'!A1:Z" },
+          }),
+          { status: 400 },
+        ),
+      ),
+    );
+    await expect(googleTransport(config, token).read()).rejects.toThrow(
+      /Unable to parse range/,
+    );
+  });
+
+  it("reads a tab it is allowed to create as empty until it exists", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            error: { message: "Unable to parse range: 'Staff'!A1:Z" },
+          }),
+          { status: 400 },
+        ),
+      ),
+    );
+    const staff = googleTransport({ ...config, tab: "Staff" }, token, {
+      createMissing: true,
+    });
+    await expect(staff.read()).resolves.toEqual([]);
+  });
+
+  it("creates a tab it owns before writing to it", async () => {
+    const calls = record();
+    await googleTransport({ ...config, tab: "Staff One" }, token, {
+      createMissing: true,
+    }).write([["email"], ["kim@clinic.org"]]);
+    // addSheet first, then the values write; neither one clears anything.
+    expect(calls[0][0]).toContain(":batchUpdate");
+    expect(calls[1][0]).toContain("valueInputOption=RAW");
+    expect(calls.every(([url]) => !url.includes(":clear"))).toBe(true);
+  });
+
+  it("explains a 403 as the sheet not being shared", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(new Response("denied", { status: 403 })),
+    );
+    await expect(googleTransport(config, token).read()).rejects.toThrow(
+      /Share the spreadsheet/,
+    );
   });
 });

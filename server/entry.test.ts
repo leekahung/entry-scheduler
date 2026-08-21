@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isDue, queueOrder } from "./db.js";
+import { isDue, queueOrder } from "./entry.js";
 import { makeEntry } from "./entry.fixture.js";
 
 // A fixed clock, so the moment an appointment comes due is exact rather than

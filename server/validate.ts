@@ -15,7 +15,7 @@ import {
   type Booking,
   type EntryUpdate,
   type Intake,
-} from "./db.js";
+} from "./entry.js";
 
 export const MAX_NAME = 80;
 export const MAX_NOTE = 280;

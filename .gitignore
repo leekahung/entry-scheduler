@@ -1,9 +1,6 @@
 node_modules
 dist
 .env
-entries.db
-entries.db-shm
-entries.db-wal
 *.csv
 *.tsbuildinfo
 dist-server

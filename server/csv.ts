@@ -1,7 +1,14 @@
-import type { Entry } from "./db.js";
+import type { Entry } from "./entry.js";
 
-/** The SIGN IN LOG SPREADSHEET header row, in its own order. */
-const COLUMNS: readonly [string, (entry: Entry) => string | number][] = [
+/**
+ * The SIGN IN LOG SPREADSHEET header row, in its own order.
+ * The spreadsheet carries these columns first, then the machine fields in
+ * `server/store.ts`, so the human log and the CSV can never drift.
+ */
+export const LOG_COLUMNS: readonly [
+  string,
+  (entry: Entry) => string | number,
+][] = [
   ["Date", (e) => e.createdAt.slice(0, 10)],
   ["Client Name", (e) => e.name],
   ["DOB", (e) => e.dob],
@@ -16,14 +23,11 @@ const COLUMNS: readonly [string, (entry: Entry) => string | number][] = [
   ["Time (0.25 increments)", (e) => (e.timeSpent ? e.timeSpent : "")],
 ];
 
-/**
- * The log as a header row plus one row per entry.
- * Shared by the CSV export and the Sheets push so the two can never drift.
- */
+/** The log as a header row plus one row per entry. */
 export function toRows(entries: Entry[]): (string | number)[][] {
   return [
-    COLUMNS.map(([header]) => header),
-    ...entries.map((entry) => COLUMNS.map(([, read]) => read(entry))),
+    LOG_COLUMNS.map(([header]) => header),
+    ...entries.map((entry) => LOG_COLUMNS.map(([, read]) => read(entry))),
   ];
 }
 

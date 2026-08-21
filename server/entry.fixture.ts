@@ -1,4 +1,4 @@
-import type { Entry } from "./db.js";
+import type { Entry } from "./entry.js";
 
 /** A complete entry with neutral defaults, for tests that need one to hand. */
 export const makeEntry = (overrides: Partial<Entry> = {}): Entry => ({
