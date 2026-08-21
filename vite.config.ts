@@ -12,5 +12,8 @@ export default defineConfig({
     globals: true,
     environment: "node",
     include: ["server/**/*.test.ts", "src/**/*.test.ts"],
+    // Runs before each test file, so a real .env in the shell cannot change
+    // what the suite is testing.
+    setupFiles: ["./server/test-setup.ts"],
   },
 });
