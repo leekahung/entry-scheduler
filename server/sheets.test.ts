@@ -29,8 +29,8 @@ describe("sheetsConfig", () => {
     );
   });
 
-  it("falls back to the sign-in log tab", () => {
-    expect(sheetsConfig(COMPLETE)?.tab).toBe("Sign In Log");
+  it("falls back to the first tab of a new spreadsheet", () => {
+    expect(sheetsConfig(COMPLETE)?.tab).toBe("Sheet1");
     expect(sheetsConfig({ ...COMPLETE, GOOGLE_SHEETS_TAB: "2026" })?.tab).toBe(
       "2026",
     );

@@ -28,7 +28,7 @@ export function sheetsConfig(env = process.env): SheetsConfig | null {
   const privateKey = env.GOOGLE_SA_KEY?.trim();
   return {
     spreadsheetId,
-    tab: env.GOOGLE_SHEETS_TAB?.trim() || "Sign In Log",
+    tab: env.GOOGLE_SHEETS_TAB?.trim() || "Sheet1",
     credentials:
       clientEmail && privateKey
         ? {
