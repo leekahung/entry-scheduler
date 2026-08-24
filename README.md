@@ -172,7 +172,7 @@ Set these on the host:
 | `ADMIN_PASSCODE` | Required unless Google sign-in is configured, and at least 12 characters. |
 | `PORT`           | Most hosts set this for you; defaults to 3001.           |
 | `GOOGLE_SHEETS_ID` | Required. The queue is stored here; the id from the sheet URL. |
-| `GOOGLE_SHEETS_TAB` | Optional. Tab to write, defaults to `Sign In Log`. |
+| `GOOGLE_SHEETS_TAB` | Optional. Tab to write, defaults to `Sheet1`, the name Google gives the first tab of a new spreadsheet. |
 | `GOOGLE_STAFF_TAB` | Optional. Tab holding the staff list, defaults to `Staff`. |
 | `GOOGLE_OAUTH_CLIENT_ID` | Turns on Google sign-in for staff. With it set, the passcode is no longer accepted. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | From the same OAuth client. |
@@ -210,6 +210,40 @@ API and the frontend together. Four settings matter:
   account the Sheets scope and share the spreadsheet with its address; leave
   `GOOGLE_SA_EMAIL` and `GOOGLE_SA_KEY` unset. Put `ADMIN_PASSCODE` (if you
   still use one) and `SESSION_SECRET` in Secret Manager.
+
+The deploy itself, from a clone — Cloud Build picks up the `Dockerfile`:
+
+```bash
+gcloud run deploy SERVICE --source . --region REGION \
+  --max-instances=1 --allow-unauthenticated \
+  --service-account=SA@PROJECT.iam.gserviceaccount.com \
+  --set-env-vars TRUST_PROXY=1,ALLOW_REMOTE_ADMIN=true,GOOGLE_SHEETS_ID=SHEET_ID,GOOGLE_OAUTH_CLIENT_ID=CLIENT_ID \
+  --set-secrets SESSION_SECRET=session-secret:latest,GOOGLE_OAUTH_CLIENT_SECRET=oauth-client-secret:latest
+```
+
+`--allow-unauthenticated` is about IAM, not the console: visitors have no
+Google Cloud account, and the console does its own sign-in behind it.
+
+`ADMIN_EMAILS` is left out on purpose. `--set-env-vars` splits on commas, so a
+list of owners would be read as several variables and the deploy would fail.
+Pass it with its own delimiter instead:
+
+```bash
+gcloud run services update SERVICE --region REGION \
+  --update-env-vars "^:^ADMIN_EMAILS=first@example.org,second@example.org"
+```
+
+`--update-env-vars`, not `--set-env-vars`: on a service that already exists the
+latter replaces the whole environment, taking `TRUST_PROXY` and the rest with
+it.
+
+Two things live outside the command. Create the secrets once
+(`printf %s "$(openssl rand -base64 32)" | gcloud secrets create session-secret --data-file=-`)
+and grant the runtime service account `roles/secretmanager.secretAccessor` on
+each. Then, once the service has its URL, add
+`https://SERVICE-HASH.REGION.run.app/api/auth/callback` to the OAuth client's
+authorised redirect URIs — sign-in fails with `redirect_uri_mismatch` until it
+is there, and the URL is only known after the first deploy.
 
 Verify a write against a scratch spreadsheet before the real cutover: the
 metadata server issues `cloud-platform`-scoped tokens, and Sheets does not
@@ -290,7 +324,7 @@ Setting it up:
    A service account is its own identity, not you — without this every write
    comes back `403`.
 4. Set `GOOGLE_SHEETS_ID` (and `GOOGLE_SHEETS_TAB` if the tab is not
-   `Sign In Log`). Without an id the button reports the feature as
+   `Sheet1`). Without an id the button reports the feature as
    unconfigured and nothing is sent.
 5. Give the server a way to authenticate as that account, either:
    - **attached identity, no key** — deploy on a host running as the service
