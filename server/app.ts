@@ -375,7 +375,13 @@ export function createApp(
         const payload = ticket.getPayload();
         // An unverified address proves nothing about who is holding it.
         if (payload?.email && payload.email_verified) email = payload.email;
-      } catch {
+      } catch (error) {
+        // Swallowed otherwise: staff get a generic failure and the cause — a
+        // wrong client secret, a reused code, a clock skew — is invisible.
+        console.error(
+          "Google sign-in exchange failed:",
+          error instanceof Error ? error.message : error,
+        );
         email = "";
       }
 
