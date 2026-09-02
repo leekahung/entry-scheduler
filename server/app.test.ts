@@ -251,6 +251,16 @@ describe("correcting who helped", () => {
     expect(res.body).toMatchObject({ helpedBy: "Jordan", status: "pending" });
   });
 
+  it("refuses a name longer than the field allows", async () => {
+    const id = await join("Ada");
+    const res = await asAdmin(request(app).patch(`/api/entries/${id}`)).send({
+      status: "pending",
+      helpedBy: "K".repeat(81),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("80 characters or fewer");
+  });
+
   it("clears helpedBy when given an empty string", async () => {
     const id = await join("Ada");
     await asAdmin(request(app).patch(`/api/entries/${id}`)).send({
@@ -865,15 +875,20 @@ describe("hardening", () => {
   });
 
   it("throttles a flood of sign-ins from one address", async () => {
-    let last = 0;
-    for (let i = 0; i < 101; i++) {
-      last = (
-        await request(app)
-          .post("/api/entries")
-          .send({ name: `Flood ${i}` })
-      ).status;
+    const statuses: number[] = [];
+    for (let i = 0; i < 105; i++) {
+      const res = await request(app)
+        .post("/api/entries")
+        .send({ name: `Flood ${i}` });
+      statuses.push(res.status);
     }
-    expect(last).toBe(429);
+    // Counted, not pinned to the 101st response: on a machine busy with other
+    // work a reply can arrive from somewhere else entirely, and pinning the
+    // index made this test fail roughly one run in twenty.
+    expect(statuses).toContain(429);
+    expect(
+      statuses.filter((status) => status === 201).length,
+    ).toBeLessThanOrEqual(100);
   });
 
   it("answers malformed JSON with an error that carries no stack trace", async () => {
