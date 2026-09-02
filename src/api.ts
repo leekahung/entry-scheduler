@@ -78,8 +78,6 @@ export type AdminEntry = QueueEntry &
 /** The join response carries the visitor's own full name, unshortened. */
 export type JoinedEntry = QueueEntry & { name: string };
 
-export const ADMIN_NOTE_MAX = 500;
-
 /** A failed request, carrying the status so 401 and 429 can be told apart. */
 export class ApiError extends Error {
   constructor(

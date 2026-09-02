@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { isEmailish, normalizeEmail } from "../server/staff";
 import {
   addStaff,
   fetchStaff,
@@ -6,8 +7,7 @@ import {
   type StaffList,
   type StaffRole,
 } from "./api";
-
-const SECONDARY = "border-border bg-surface text-text";
+import { duplicateReason } from "./staffList";
 
 /**
  * Lets an owner grant and revoke console access.
@@ -47,7 +47,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
   if (!list) {
     return (
       <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
-        <h2 className="mx-0 mt-0 mb-1 text-[1.15rem]">Staff access</h2>
+        <h2 className="mx-0 mt-0 mb-1 text-lead">Staff access</h2>
         <p className="m-0 text-muted">{error || "Loading who has access…"}</p>
       </section>
     );
@@ -56,7 +56,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
   return (
     <section className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-surface p-5">
       <div>
-        <h2 className="mx-0 mt-0 mb-1 text-[1.15rem]">Staff access</h2>
+        <h2 className="mx-0 mt-0 mb-1 text-lead">Staff access</h2>
         <p className="m-0 text-muted">
           Owners can change this list. Everyone here signs in with their own
           Google account.
@@ -67,14 +67,29 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
         className="flex flex-wrap items-end gap-2"
         onSubmit={(event) => {
           event.preventDefault();
+          // The browser's own email check accepts "sam@clinic"; the server
+          // does not, so use the server's rule and say so before sending.
+          const address = normalizeEmail(email);
+          if (!isEmailish(address)) {
+            setError("That is not a valid email address.");
+            return;
+          }
+          // Re-adding someone rewrites their row, silently changing who
+          // granted the access and when. Say so instead when the add would
+          // achieve nothing.
+          const duplicate = duplicateReason(list, address, role);
+          if (duplicate) {
+            setError(duplicate);
+            return;
+          }
           void run(async () => {
-            await addStaff(passcode, email, role);
+            await addStaff(passcode, address, role);
             setEmail("");
             setRole("staff");
           });
         }}
       >
-        <div className="flex flex-[1_1_16rem] flex-col gap-2">
+        <div className="flex field-wide flex-col gap-2">
           <label htmlFor="staff-email">Add a Google address</label>
           <input
             id="staff-email"
@@ -101,27 +116,41 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
         </button>
       </form>
 
-      {error && <p className="m-0 text-[0.9rem] text-danger">{error}</p>}
+      {error && <p className="m-0 text-meta text-danger">{error}</p>}
 
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {list.bootstrapOwners.map((owner) => (
           <li key={owner} className="flex flex-wrap items-center gap-3">
             <span className="flex-1">{owner}</span>
-            <span className="text-[0.85rem] text-muted">
+            <span className="text-meta text-muted">
               Owner · set on the server
+              {list.redundantRows.includes(owner) &&
+                " · leftover row in the sheet"}
             </span>
+            {/* The row grants nothing while the environment lists them, but it
+                would start granting again the day they are taken out of it. */}
+            {list.redundantRows.includes(owner) && (
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={busy}
+                onClick={() => void run(() => removeStaff(passcode, owner))}
+              >
+                Clear row
+              </button>
+            )}
           </li>
         ))}
         {list.members.map((member) => (
           <li key={member.email} className="flex flex-wrap items-center gap-3">
             <span className="flex-1">{member.email}</span>
-            <span className="text-[0.85rem] text-muted">
+            <span className="text-meta text-muted">
               {member.role === "owner" ? "Owner" : "Staff"}
               {member.addedBy && ` · added by ${member.addedBy}`}
             </span>
             <button
               type="button"
-              className={SECONDARY}
+              className="btn-secondary"
               disabled={busy || member.email === list.you?.email}
               onClick={() =>
                 void run(() => removeStaff(passcode, member.email))

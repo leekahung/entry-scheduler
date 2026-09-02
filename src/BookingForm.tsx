@@ -6,9 +6,11 @@ import {
   type CaseType,
   type Gender,
 } from "../server/codes";
+import { MAX_NAME, MAX_NOTE } from "../server/validate";
 import { PRIORITIES, PRIORITY_LABEL, type Priority } from "./api";
 import ConfirmDialog from "./ConfirmDialog";
-import { fromLocalInput, todayLocal } from "./time";
+import { CodeSelect, DobField, PhoneField } from "./fields";
+import { fromLocalInput } from "./time";
 import type { NewBooking } from "./useEntries";
 
 const BLANK = {
@@ -62,24 +64,24 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
       className="mb-4 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
       onSubmit={handleSubmit}
     >
-      <h2 className="mx-0 mt-0 mb-1 text-[1.15rem]">Book someone in</h2>
+      <h2 className="mx-0 mt-0 mb-1 text-lead">Book someone in</h2>
       <p className="mt-1 mb-0 text-muted">
         Leave the time blank for a walk-up. An appointment joins the same line
         at its start time.
       </p>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+        <div className="flex field flex-col gap-2">
           <label htmlFor="booking-name">Client name</label>
           <input
             id="booking-name"
             value={draft.name}
             onChange={(event) => set("name", event.target.value)}
-            maxLength={80}
+            maxLength={MAX_NAME}
             required
           />
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+        <div className="flex field flex-col gap-2">
           <label htmlFor="booking-when">Appointment time</label>
           <input
             id="booking-when"
@@ -91,7 +93,7 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+        <div className="flex field flex-col gap-2">
           <label htmlFor="booking-priority">Triage level</label>
           <select
             id="booking-priority"
@@ -107,74 +109,53 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
             ))}
           </select>
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label htmlFor="booking-phone">Phone number</label>
-          <input
+        <div className="flex field flex-col gap-2">
+          <PhoneField
             id="booking-phone"
-            type="tel"
             value={draft.phone}
-            onChange={(event) => set("phone", event.target.value)}
-            maxLength={30}
+            onChange={(value) => set("phone", value)}
           />
         </div>
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label htmlFor="booking-dob">Date of birth</label>
-          <input
+        <div className="flex field flex-col gap-2">
+          <DobField
             id="booking-dob"
-            type="date"
             value={draft.dob}
-            onChange={(event) => set("dob", event.target.value)}
-            max={todayLocal()}
+            onChange={(value) => set("dob", value)}
           />
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label htmlFor="booking-gender">Gender</label>
-          <select
+        <div className="flex field flex-col gap-2">
+          <CodeSelect
             id="booking-gender"
+            label="Gender"
             value={draft.gender}
-            onChange={(event) =>
-              set("gender", event.target.value as Gender | "")
-            }
-          >
-            <option value="">—</option>
-            {GENDERS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            codes={GENDERS}
+            onChange={(value) => set("gender", value)}
+          />
         </div>
       </div>
 
-      <label htmlFor="booking-caseType">Case type</label>
-      <select
+      <CodeSelect
         id="booking-caseType"
+        label="Case type"
         value={draft.caseType}
-        onChange={(event) =>
-          set("caseType", event.target.value as CaseType | "")
-        }
-      >
-        <option value="">—</option>
-        {CASE_TYPES_BY_LABEL.map((type) => (
-          <option key={type} value={type}>
-            {CASE_TYPE_LABEL[type]}
-          </option>
-        ))}
-      </select>
+        codes={CASE_TYPES_BY_LABEL}
+        labelFor={(type) => CASE_TYPE_LABEL[type]}
+        onChange={(value) => set("caseType", value)}
+      />
 
       <label htmlFor="booking-note">Note</label>
       <textarea
         id="booking-note"
         value={draft.note}
         onChange={(event) => set("note", event.target.value)}
-        maxLength={280}
+        maxLength={MAX_NOTE}
         rows={2}
       />
 
-      <div className="mt-2 flex max-w-[44rem] flex-wrap items-center justify-end gap-2 card-mode:justify-stretch">
+      <div className="mt-2 flex max-w-editor flex-wrap items-center justify-end gap-2 card-mode:justify-stretch">
         <button
           type="button"
           className="border-border bg-surface text-text card-mode:flex-1"

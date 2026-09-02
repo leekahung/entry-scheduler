@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import { MAX_NAME } from "../server/validate";
 import {
   downloadCsv,
   missingForLog,
-  PRIORITIES,
-  PRIORITY_LABEL,
   type AdminEntry,
   type Priority,
   type Status,
 } from "./api";
+import AdminSignIn from "./AdminSignIn";
+import AdminToolbar from "./AdminToolbar";
 import BookingForm from "./BookingForm";
+import ClearAllDialog from "./ClearAllDialog";
 import { seedDraft, type EditorDraft } from "./EntryEditor";
+import QueueFilters from "./QueueFilters";
+import RemoveEntryDialog from "./RemoveEntryDialog";
 import QueueTable from "./QueueTable";
 import { minutesAgo, unclosedMonth } from "./time";
 import type { EntryChanges } from "./useEntries";
@@ -21,23 +25,17 @@ import StaffAccess from "./StaffAccess";
 // quarter hour is worth staff looking up.
 const ALERT_FROM = 3;
 // Only warn about the lockout once it's close enough to matter.
-const MODAL =
-  "m-auto w-[calc(100%-2rem)] max-w-[26rem] rounded-xl border border-border bg-surface p-6 text-text backdrop:bg-black/45";
-
-const MODAL_ACTION = "max-[480px]:w-full";
-
-const SECONDARY = "border-border bg-surface text-text";
 
 const SECTION_HEADING =
-  "mx-0 mt-0 mb-2 text-base tracking-[0.04em] text-muted uppercase";
+  "mx-0 mt-0 mb-2 text-base tracking-label text-muted uppercase";
 
 const EMPTY_NOTE =
   "m-0 rounded-xl border border-border bg-surface p-5 text-muted";
 
-const BANNER =
-  "m-0 rounded-lg border border-[#f0c48a] bg-[#fff4e5] px-[0.9rem] py-[0.6rem] text-[0.9rem] text-[#8a5200]";
+const BANNER = "banner banner-caution";
 
-const REMAINING_WARN_FROM = 5;
+// Louder than BANNER: this one wants someone to act, not just to know.
+const ALERT = "banner banner-alert";
 
 /** Staff console: work the queue, book people in, export the full sheet. */
 export default function AdminPage() {
@@ -58,28 +56,10 @@ export default function AdminPage() {
   const [showResolved, setShowResolved] = useState(true);
   const [pendingDelete, setPendingDelete] = useState<AdminEntry | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const [clearing, setClearing] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const [query, setQuery] = useState("");
   const [triage, setTriage] = useState<Priority | "">("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const clearDialogRef = useRef<HTMLDialogElement>(null);
-
-  // <dialog> needs showModal() to get the focus trap and Esc handling.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (pendingDelete && !dialog.open) dialog.showModal();
-    if (!pendingDelete && dialog.open) dialog.close();
-  }, [pendingDelete]);
-
-  useEffect(() => {
-    const dialog = clearDialogRef.current;
-    if (!dialog) return;
-    if (confirmingClear && !dialog.open) dialog.showModal();
-    if (!confirmingClear && dialog.open) dialog.close();
-  }, [confirmingClear]);
 
   // Through a ref so the effect fires on a new rejection, not on every render.
   const signOutRef = useRef(handleSignOut);
@@ -115,79 +95,7 @@ export default function AdminPage() {
     );
   };
 
-  if (!unlocked) {
-    return (
-      <main
-        data-scale="kiosk"
-        className="mx-auto flex max-w-[24rem] flex-col gap-5 pt-8 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] kiosk:max-w-[44rem]"
-      >
-        {session.mode === null ? (
-          // Which sign-in to offer is the server's answer, so wait for it
-          // rather than flashing a passcode box that may be wrong.
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
-            <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
-              Staff sign-in
-            </h1>
-            <p className="m-0 text-muted">{session.error || "Connecting…"}</p>
-          </div>
-        ) : session.mode === "google" ? (
-          <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
-            <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
-              Staff sign-in
-            </h1>
-            <p className="mt-1 mb-0 text-muted">
-              Sign in with your work Google account to manage the help queue.
-            </p>
-            <button type="button" onClick={session.signInWithGoogle}>
-              Sign in with Google
-            </button>
-            {session.error && (
-              <p className="m-0 text-[0.9rem] text-danger">{session.error}</p>
-            )}
-          </div>
-        ) : (
-          <form
-            className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
-            onSubmit={(event) => {
-              event.preventDefault();
-              session.unlock();
-            }}
-          >
-            <h1 className="mx-0 mt-0 mb-1 text-[1.15rem] kiosk:text-[2rem]">
-              Staff sign-in
-            </h1>
-            <p className="mt-1 mb-0 text-muted">
-              Enter the staff passcode to manage the help queue.
-            </p>
-            <label htmlFor="passcode">Passcode</label>
-            <input
-              id="passcode"
-              type="password"
-              value={passcode}
-              onChange={(event) => session.setPasscode(event.target.value)}
-              autoComplete="current-password"
-              required
-            />
-            <button type="submit">Unlock</button>
-            {session.error && (
-              <p className="m-0 text-[0.9rem] text-danger">{session.error}</p>
-            )}
-            {session.attemptsLeft !== null &&
-              session.attemptsLeft <= REMAINING_WARN_FROM && (
-                <p className="mx-0 mt-[-0.35rem] mb-0 text-[0.85rem] text-[#8a5200]">
-                  {session.attemptsLeft === 0
-                    ? "No attempts left — this device is now locked for 15 minutes."
-                    : `${session.attemptsLeft} ${session.attemptsLeft === 1 ? "attempt" : "attempts"} left before this device is locked out for 15 minutes.`}
-                </p>
-              )}
-          </form>
-        )}
-        <p className="m-0 text-center text-[0.9rem] text-muted">
-          Here to get help instead? <a href="#/">Check in</a>
-        </p>
-      </main>
-    );
-  }
+  if (!unlocked) return <AdminSignIn session={session} />;
 
   const { entries, alerts, offline, loaded } = queue;
 
@@ -205,9 +113,13 @@ export default function AdminPage() {
   });
   const filtering = Boolean(needle || triage || incompleteOnly);
 
-  // Three lists, one line. `due` comes from the server, which also decides the
-  // order, so the split can never disagree with the queue it is describing.
+  // `due` comes from the server, which also decides the order, so the split can
+  // never disagree with the queue it is describing.
   const inRoom = visible.filter((e) => e.status !== "resolved" && e.due);
+  // The line splits again by what staff are doing with it: someone already
+  // being helped is not part of the queue anyone is waiting in.
+  const inProgress = inRoom.filter((e) => e.status === "pending");
+  const waitingNow = inRoom.filter((e) => e.status === "new");
   const upcoming = visible.filter((e) => e.status !== "resolved" && !e.due);
   const resolved = visible.filter((e) => e.status === "resolved");
   const incompleteCount = entries.filter(
@@ -255,60 +167,19 @@ export default function AdminPage() {
   return (
     /* The seven-column table pins every column but the name, so the console
        needs the extra width to keep names and notes off three lines. */
-    <main className="mx-auto flex max-w-[80rem] flex-col gap-5 pt-8 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))]">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="m-0 text-[1.6rem]">Queue admin</h1>
-          <p className="mt-1 mb-0 text-muted">
-            {allInRoom.length - beingHelped} waiting · {beingHelped} being
-            helped ·{" "}
-            {entries.filter((e) => e.status !== "resolved" && !e.due).length}{" "}
-            scheduled later ·{" "}
-            {entries.filter((e) => e.status === "resolved").length} done
-          </p>
-          {session.email && (
-            <p className="mt-1 mb-0 text-[0.85rem] text-muted">
-              Signed in as {session.email}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setShowBooking((shown) => !shown)}
-            aria-expanded={showBooking}
-          >
-            {showBooking ? "Close" : "Book someone in"}
-          </button>
-          {sheetUrl && (
-            <a
-              data-button
-              className={SECONDARY}
-              href={sheetUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open spreadsheet
-            </a>
-          )}
-          <button
-            type="button"
-            className={SECONDARY}
-            onClick={() => handleSignOut()}
-          >
-            Sign out
-          </button>
-          {/* "Clear all" wipes the board; keep it off the elbow of "Sign out". */}
-          <button
-            type="button"
-            className="ml-2 border-border bg-surface text-danger"
-            onClick={() => setConfirmingClear(true)}
-            disabled={entries.length === 0}
-          >
-            Clear all
-          </button>
-        </div>
-      </header>
+    <main className="mx-auto flex max-w-[80rem] flex-col gap-5 pt-8 page-inset">
+      <AdminToolbar
+        entries={entries}
+        inRoom={allInRoom.length}
+        beingHelped={beingHelped}
+        email={session.email}
+        sheetUrl={sheetUrl}
+        showBooking={showBooking}
+        onToggleBooking={() => setShowBooking((shown) => !shown)}
+        onExport={exportSheet}
+        onSignOut={() => handleSignOut()}
+        onClearAll={() => setConfirmingClear(true)}
+      />
 
       {showBooking && (
         <BookingForm
@@ -329,6 +200,7 @@ export default function AdminPage() {
         <input
           id="helpedBy"
           value={helpedBy}
+          maxLength={MAX_NAME}
           onChange={(event) => {
             setHelpedBy(event.target.value);
             localStorage.setItem("helpedBy", event.target.value);
@@ -337,10 +209,7 @@ export default function AdminPage() {
           placeholder="Your name, e.g. Kim"
           aria-describedby="helpedBy-hint"
         />
-        <p
-          id="helpedBy-hint"
-          className="m-0 flex-[1_1_12rem] text-[0.85rem] text-muted"
-        >
+        <p id="helpedBy-hint" className="m-0 field text-meta text-muted">
           {helpedBy.trim()
             ? `Entries you work on will be credited to ${helpedBy.trim()}.`
             : "Add your name so the queue shows who helped each person."}
@@ -358,7 +227,7 @@ export default function AdminPage() {
           {queue.rejected.message} The list has stopped refreshing.{" "}
           <button
             type="button"
-            className="self-start bg-transparent p-0 text-accent underline pointer-coarse:min-h-[2.75rem]"
+            className="self-start bg-transparent p-0 text-accent underline"
             onClick={queue.resume}
           >
             Try again
@@ -367,16 +236,13 @@ export default function AdminPage() {
       )}
 
       {(queue.actionError || downloadError) && !confirmingClear && (
-        <p className="m-0 text-[0.9rem] text-danger">
+        <p className="m-0 text-meta text-danger">
           {queue.actionError || downloadError}
         </p>
       )}
 
       {monthToClose && (
-        <p
-          className="m-0 rounded-lg border border-[#e5a3a3] border-l-4 border-l-[#c0392b] bg-[#fdecec] px-[0.9rem] py-[0.7rem] text-[0.9rem] leading-[1.45] text-[#7d2620]"
-          role="status"
-        >
+        <p className={ALERT} role="status">
           <strong>{monthToClose} is not closed out yet.</strong> Entries from
           then are still on the board. Download the spreadsheet before clearing
           — clearing empties the Google Sheet too, and the CSV is the only copy
@@ -385,11 +251,7 @@ export default function AdminPage() {
       )}
 
       {alerts && alerts.failedAttempts >= ALERT_FROM && (
-        /* Louder than the offline banner: this one wants someone to act. */
-        <p
-          className="m-0 rounded-lg border border-[#e5a3a3] border-l-4 border-l-[#c0392b] bg-[#fdecec] px-[0.9rem] py-[0.7rem] text-[0.9rem] leading-[1.45] text-[#7d2620]"
-          role="status"
-        >
+        <p className={ALERT} role="status">
           <strong>{alerts.failedAttempts} failed sign-in attempts</strong> in
           the last {alerts.windowMinutes} minutes
           {alerts.lastAttemptAt &&
@@ -399,85 +261,60 @@ export default function AdminPage() {
         </p>
       )}
 
-      {/* Narrowing the three lists at once: the sections already split by
-          status, so this filters on the things they don't. */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
-        <label className="sr-only" htmlFor="entry-search">
-          Search by name or number
-        </label>
-        <input
-          id="entry-search"
-          type="search"
-          className="w-auto flex-[1_1_16rem]"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search name or #number"
-        />
-        <label className="sr-only" htmlFor="triage-filter">
-          Triage level
-        </label>
-        <select
-          id="triage-filter"
-          className="w-auto flex-[0_1_12rem]"
-          value={triage}
-          onChange={(event) => setTriage(event.target.value as Priority | "")}
-        >
-          <option value="">Any triage level</option>
-          {PRIORITIES.map((level) => (
-            <option key={level} value={level}>
-              {PRIORITY_LABEL[level]}
-            </option>
-          ))}
-        </select>
-        <label className="flex items-center gap-[0.4rem] font-normal whitespace-nowrap">
-          <input
-            className="min-h-0 w-auto"
-            type="checkbox"
-            checked={incompleteOnly}
-            onChange={(event) => setIncompleteOnly(event.target.checked)}
-          />
-          Needs details ({incompleteCount})
-        </label>
-        {filtering && (
-          <button
-            type="button"
-            className={`${SECONDARY} min-h-[2.25rem] px-[0.7rem] py-[0.35rem]`}
-            onClick={() => {
-              setQuery("");
-              setTriage("");
-              setIncompleteOnly(false);
-            }}
-          >
-            Clear filters
-          </button>
-        )}
-        {filtering && (
-          <p
-            className="m-0 flex-[1_1_100%] text-[0.85rem] text-muted"
-            role="status"
-          >
-            {visible.length} of {entries.length} shown
-          </p>
-        )}
-      </div>
+      <QueueFilters
+        query={query}
+        onQuery={setQuery}
+        triage={triage}
+        onTriage={setTriage}
+        incompleteOnly={incompleteOnly}
+        onIncompleteOnly={setIncompleteOnly}
+        incompleteCount={incompleteCount}
+        filtering={filtering}
+        shown={visible.length}
+        total={entries.length}
+        onClear={() => {
+          setQuery("");
+          setTriage("");
+          setIncompleteOnly(false);
+        }}
+      />
 
-      <section className="mt-2" aria-labelledby="active-heading">
-        <h2 id="active-heading" className={SECTION_HEADING}>
-          In the queue now ({inRoom.length})
+      {inProgress.length > 0 && (
+        <section className="mt-2" aria-labelledby="in-progress-heading">
+          <h2 id="in-progress-heading" className={SECTION_HEADING}>
+            Being helped ({inProgress.length})
+          </h2>
+          <QueueTable
+            rows={inProgress}
+            caption="Entries a staff member is helping right now"
+            {...tableProps}
+          />
+        </section>
+      )}
+
+      <section className="mt-2" aria-labelledby="waiting-heading">
+        <h2 id="waiting-heading" className={SECTION_HEADING}>
+          Waiting ({waitingNow.length})
         </h2>
         {!loaded ? (
           <p className={EMPTY_NOTE}>Loading entries…</p>
-        ) : inRoom.length === 0 ? (
+        ) : waitingNow.length === 0 ? (
           <p className={EMPTY_NOTE}>
+            {/* Measured against every section, not just this one: a filter
+                matching only someone being helped, booked later, or already
+                done would otherwise be denied here while its table shows the
+                match. */}
             {filtering
-              ? "No entries match these filters."
+              ? visible.length === 0
+                ? "No entries match these filters."
+                : "Nobody waiting matches these filters."
               : entries.length === 0
                 ? "No entries yet."
                 : "Nobody is waiting — everyone has been helped."}
           </p>
         ) : (
           <QueueTable
-            rows={inRoom}
+            rows={waitingNow}
             caption="Walk-ins and appointments that are due, in queue order"
             {...tableProps}
           />
@@ -508,7 +345,7 @@ export default function AdminPage() {
             </h2>
             <button
               type="button"
-              className={SECONDARY}
+              className="btn-secondary"
               onClick={() => setShowResolved((shown) => !shown)}
               aria-expanded={showResolved}
             >
@@ -525,94 +362,27 @@ export default function AdminPage() {
         </section>
       )}
 
-      <dialog
-        ref={clearDialogRef}
-        className={MODAL}
-        onClose={() => setConfirmingClear(false)}
-      >
-        <h2 className="mx-0 mt-0 mb-2 text-[1.2rem]">
-          Clear all {entries.length}{" "}
-          {entries.length === 1 ? "entry" : "entries"}?
-        </h2>
-        <p className="mx-0 mt-0 mb-5 text-muted">
-          This empties the board for a fresh start and numbering begins again at
-          #1. It clears the Google Sheet as well and cannot be undone — download
-          the spreadsheet first if you need a record of today.
-        </p>
-        {downloadError && (
-          <p className="m-0 text-[0.9rem] text-danger">{downloadError}</p>
-        )}
-        {/* Keeps DOM order on mobile so the recommended first step (download)
-            stays first and the destructive action stays last. */}
-        <div className="flex flex-wrap justify-end gap-2 max-[480px]:flex-col">
-          <button
-            type="button"
-            className={`${SECONDARY} ${MODAL_ACTION}`}
-            onClick={exportSheet}
-          >
-            Download spreadsheet
-          </button>
-          <button
-            type="button"
-            className={`${SECONDARY} ${MODAL_ACTION}`}
-            onClick={() => setConfirmingClear(false)}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={`bg-danger text-white ${MODAL_ACTION}`}
-            onClick={async () => {
-              setClearing(true);
-              await queue.clearAll();
-              setClearing(false);
-              setConfirmingClear(false);
-              closeEditor();
-            }}
-            disabled={clearing}
-          >
-            {clearing ? "Clearing…" : "Clear all entries"}
-          </button>
-        </div>
-      </dialog>
+      <ClearAllDialog
+        open={confirmingClear}
+        count={entries.length}
+        downloadError={downloadError}
+        onExport={exportSheet}
+        onCancel={() => setConfirmingClear(false)}
+        onConfirm={async () => {
+          await queue.clearAll();
+          setConfirmingClear(false);
+          closeEditor();
+        }}
+      />
 
-      <dialog
-        ref={dialogRef}
-        className={MODAL}
-        onClose={() => setPendingDelete(null)}
-      >
-        {pendingDelete && (
-          <>
-            <h2 className="mx-0 mt-0 mb-2 text-[1.2rem]">
-              Remove #{pendingDelete.id}?
-            </h2>
-            <p className="mx-0 mt-0 mb-5 text-muted">
-              <strong>{pendingDelete.name}</strong> will be removed from the
-              queue and deleted from the Google Sheet. This cannot be undone.
-            </p>
-            <div className="flex flex-wrap justify-end gap-2 max-[480px]:flex-col-reverse">
-              <button
-                type="button"
-                className={`${SECONDARY} ${MODAL_ACTION}`}
-                onClick={() => setPendingDelete(null)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={`bg-danger text-white ${MODAL_ACTION}`}
-                onClick={() => {
-                  const entry = pendingDelete;
-                  setPendingDelete(null);
-                  queue.remove(entry);
-                }}
-              >
-                Remove entry
-              </button>
-            </div>
-          </>
-        )}
-      </dialog>
+      <RemoveEntryDialog
+        entry={pendingDelete}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={(entry) => {
+          setPendingDelete(null);
+          queue.remove(entry);
+        }}
+      />
     </main>
   );
 }

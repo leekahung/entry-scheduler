@@ -1,38 +1,19 @@
-import { useEffect, useState } from "react";
-import { GENDERS, type Gender } from "../server/codes";
-import { fetchQueue, joinQueue, STATUS_LABEL, type QueueEntry } from "./api";
-import { todayLocal } from "./time";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  fetchQueue,
+  joinQueue,
+  type QueueEntry,
+  type VisitorIntake,
+} from "./api";
+import CheckInForm from "./CheckInForm";
+import QueueBoard from "./QueueBoard";
+import WaitingList from "./WaitingList";
+import { formatAppointment } from "./time";
 
 const POLL_MS = 5000;
-// Keep in sync with MAX_NAME / MAX_PHONE in server/validate.ts, which enforce
-// the real limits.
-const NAME_MAX = 80;
-const PHONE_MAX = 30;
-// A name field is short enough that a permanent counter is noise; only warn
-// once someone is close to the cap.
-const NAME_COUNTER_FROM = 60;
 
-const TICKET_EDGE: Record<QueueEntry["status"], string> = {
-  new: "border-l-new",
-  pending: "border-l-pending",
-  resolved: "border-l-resolved",
-};
-
-const BADGE_COLOR: Record<QueueEntry["status"], string> = {
-  new: "text-new",
-  pending: "text-pending",
-  resolved: "text-resolved",
-};
-
-const BADGE =
-  "whitespace-nowrap rounded-full border border-current px-2 py-[0.15rem] text-[0.75rem] font-bold uppercase tracking-[0.03em]";
-
-/** Public sign-in screen: enter a name, check in, watch your place in line. */
+/** Public sign-in screen: enter a name, check in, watch the line. */
 export default function UserPage() {
-  const [name, setName] = useState("");
-  const [dob, setDob] = useState("");
-  const [gender, setGender] = useState<Gender | "">("");
-  const [phone, setPhone] = useState("");
   const [myId, setMyId] = useState<number | null>(() => {
     const saved = localStorage.getItem("entryId");
     return saved ? Number(saved) : null;
@@ -41,6 +22,18 @@ export default function UserPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [offline, setOffline] = useState(false);
+  // The kiosk rests on a start screen; the form only appears once someone
+  // says they are here to check in.
+  const [showForm, setShowForm] = useState(false);
+  // Survives a reload so a kiosk in use all day does not go back to inviting
+  // the first check-in. Cancelling out of the form does reset it.
+  const [checkedInBefore, setCheckedInBefore] = useState(
+    () => localStorage.getItem("checkedInBefore") === "1",
+  );
+  const ticketRef = useRef<HTMLElement>(null);
+  // Set only by a check-in on this device, so returning to a page that still
+  // holds a ticket does not pull focus out of wherever the visitor is.
+  const justCheckedIn = useRef(false);
   // Until the first fetch lands, an empty queue is unknown, not empty.
   const [loaded, setLoaded] = useState(false);
   // The public queue only carries shortened names, so keep the visitor's own.
@@ -68,28 +61,30 @@ export default function UserPage() {
     };
   }, []);
 
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
+  async function handleSubmit(name: string, intake: VisitorIntake) {
     setError("");
     setSubmitting(true);
     try {
-      const entry = await joinQueue(name.trim(), {
-        dob,
-        gender,
-        phone: phone.trim(),
-      });
+      const entry = await joinQueue(name, intake);
       localStorage.setItem("entryId", String(entry.id));
       localStorage.setItem("entryName", entry.name);
       // Numbering restarts at #1 after staff clear the board, so the id alone
       // can collide with a different person's later entry.
       localStorage.setItem("entryCreatedAt", entry.createdAt);
+      // Kept when the entry keys are cleared: it records that this device has
+      // been used before, not who is currently checked in. Only backing out of
+      // the form clears it.
+      localStorage.setItem("checkedInBefore", "1");
+      setCheckedInBefore(true);
+      justCheckedIn.current = true;
       setMyId(entry.id);
       setMyName(entry.name);
-      setName("");
-      setDob("");
-      setGender("");
-      setPhone("");
       setQueue(await fetchQueue());
+      // Last, and only once the refetch has landed: a blip here throws, and
+      // closing the form first would strand the visitor on the start screen
+      // with their entry made, no ticket, and the error unmounted with it.
+      // Unmounting the form is also what clears the fields it was holding.
+      setShowForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -97,13 +92,23 @@ export default function UserPage() {
     }
   }
 
-  function forgetMyEntry() {
+  // Backing out returns the kiosk to its untouched state, greeting and all.
+  function cancelForm() {
+    setShowForm(false);
+    setError("");
+    localStorage.removeItem("checkedInBefore");
+    setCheckedInBefore(false);
+  }
+
+  // Stable so the resolved-entry effect below can depend on it without
+  // clearing the ticket again on every render.
+  const forgetMyEntry = useCallback(() => {
     localStorage.removeItem("entryId");
     localStorage.removeItem("entryName");
     localStorage.removeItem("entryCreatedAt");
     setMyId(null);
     setMyName("");
-  }
+  }, []);
 
   // Only people actually in the line. An appointment still hours out is in the
   // queue but not here yet, and counting it would tell the room a stranger is
@@ -115,109 +120,98 @@ export default function UserPage() {
   // a stale id would otherwise latch onto a stranger's entry. A device with no
   // stored time cannot prove which entry is its own, so it claims none.
   const savedCreatedAt = localStorage.getItem("entryCreatedAt");
+  // Being helped is the end of the visit: a resolved entry has left the line,
+  // so its ticket goes too and the kiosk is ready for the next person.
   const mine = queue.find(
-    (entry) => entry.id === myId && entry.createdAt === savedCreatedAt,
+    (entry) =>
+      entry.status !== "resolved" &&
+      entry.id === myId &&
+      entry.createdAt === savedCreatedAt,
   );
   // Any number of people can be helped at once, so this is a list, not one
   // number. The queue arrives ordered, so `upNext` is the lowest waiting number.
   const beingHelped = waiting.filter((entry) => entry.status === "pending");
-  // Counted among the people still queued, not everyone on the board: someone
-  // already being helped is not ahead in the line. Counting them made the
-  // ticket say "3 people ahead of you" while the board named you as up next.
+  // Someone already being helped is no longer waiting, so "up next" is the
+  // lowest number still queued.
   const queued = waiting.filter((entry) => entry.status === "new");
   const upNext = queued[0];
-  const ahead = mine ? queued.findIndex((entry) => entry.id === mine.id) : -1;
+
+  // Checking in swaps the form out for the ticket, which would otherwise drop
+  // focus to the top of the page. Keyed on the id, so a poll that re-renders
+  // the same ticket does not keep stealing focus back.
+  const ticketId = mine?.id;
+  useEffect(() => {
+    if (ticketId === undefined || !justCheckedIn.current) return;
+    justCheckedIn.current = false;
+    ticketRef.current?.focus();
+  }, [ticketId]);
+
+  // Once the entry this device holds is resolved the visit is over, so the
+  // stored keys go too. Left behind, a staff mis-click on Reopen would put
+  // that ticket back over a form the next visitor is already filling in.
+  const settledId = queue.find(
+    (entry) =>
+      entry.status === "resolved" &&
+      entry.id === myId &&
+      entry.createdAt === savedCreatedAt,
+  )?.id;
+  useEffect(() => {
+    if (settledId !== undefined) forgetMyEntry();
+  }, [settledId, forgetMyEntry]);
 
   return (
     <main
       data-scale="kiosk"
-      className="mx-auto flex max-w-[40rem] flex-col gap-5 pt-8 pr-[max(1rem,env(safe-area-inset-right))] pb-[max(4rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] kiosk:max-w-[44rem]"
+      className="mx-auto flex max-w-[40rem] flex-col gap-5 pt-8 page-inset kiosk:max-w-kiosk"
     >
       <header>
-        <h1 className="m-0 text-[1.6rem] kiosk:text-[2rem]">Check in</h1>
-        <p className="mt-1 mb-0 text-muted">
-          Add your name and someone will come help you.
-        </p>
+        <h1 className="m-0 text-title kiosk:text-title-kiosk">Check in</h1>
+        {/* Only true while the form is up: the start screen has no name to
+            add yet, and the ticket says it better itself. */}
+        {showForm && !mine && (
+          <p className="mt-1 mb-0 text-muted">
+            Add your name and someone will come help you.
+          </p>
+        )}
       </header>
 
       {offline && (
-        <p
-          className="m-0 rounded-lg border border-[#f0c48a] bg-[#fff4e5] px-[0.9rem] py-[0.6rem] text-[0.9rem] text-[#8a5200]"
-          role="status"
-        >
+        <p className="banner banner-caution" role="status">
           Can&rsquo;t reach the server — this list may be out of date.
         </p>
       )}
 
-      {/* Deliberately not a live region: these numbers change as other people
-          are helped, and announcing every change would talk over the visitor.
-          Their own status is announced from the ticket below. */}
-      {(beingHelped.length > 0 || upNext) && (
-        <section className="mt-2 flex flex-wrap justify-around gap-4 rounded-xl border border-border bg-surface px-5 py-4 text-center">
-          {beingHelped.length > 0 && (
-            <div className="min-w-[8rem] flex-1">
-              <p className="m-0 text-[0.8rem] font-bold tracking-[0.08em] text-muted uppercase">
-                {beingHelped.length === 1
-                  ? "Now being helped"
-                  : `Now being helped (${beingHelped.length})`}
-              </p>
-              <p className="m-0 mt-[0.15rem] text-[2.75rem] leading-[1.1] font-extrabold text-accent tabular-nums kiosk:text-[3.5rem]">
-                {beingHelped.map((entry) => `#${entry.id}`).join("  ")}
-              </p>
-            </div>
-          )}
-          {upNext && (
-            <div className="min-w-[8rem] flex-1">
-              <p className="m-0 text-[0.8rem] font-bold tracking-[0.08em] text-muted uppercase">
-                Up next
-              </p>
-              <p className="m-0 mt-[0.15rem] text-[2.75rem] leading-[1.1] font-extrabold text-accent tabular-nums kiosk:text-[3.5rem]">
-                #{upNext.id}
-              </p>
-            </div>
-          )}
-        </section>
-      )}
+      <QueueBoard beingHelped={beingHelped} upNext={upNext} mineId={mine?.id} />
 
+      {/* The ticket carries no aria-live: focus moves to it as it appears,
+          which is what announces it. A live region too would say it twice. */}
       {mine ? (
         <section
-          className={`mt-2 flex flex-col gap-[0.35rem] rounded-xl border border-border border-l-[5px] bg-surface p-5 ${TICKET_EDGE[mine.status]}`}
-          aria-live="polite"
+          ref={ticketRef}
+          tabIndex={-1}
+          className="mt-2 flex flex-col gap-[0.35rem] rounded-xl border border-border border-l-[5px] border-l-accent bg-surface p-5"
         >
+          {/* The board calls people by number, so the visitor needs to know
+              which one is theirs. */}
           <p className="m-0 text-[1.9rem] leading-[1.1] font-extrabold tabular-nums kiosk:text-[2.5rem]">
             #{mine.id}
           </p>
-          <p className="m-0 text-[1.35rem] font-bold kiosk:text-[1.6rem]">
+          {/* A name is one long token as far as the browser is concerned, so
+              it has to be allowed to break mid-word or it drags the whole
+              page sideways. */}
+          <p className="m-0 text-[1.35rem] font-bold [overflow-wrap:anywhere] kiosk:text-title">
             {myName || mine.name}
           </p>
-          {mine.scheduledFor && mine.status !== "resolved" && (
+          {mine.scheduledFor && (
             <p className="mx-0 mt-1 mb-0 font-semibold text-accent">
-              Appointment at{" "}
-              {new Date(mine.scheduledFor).toLocaleString([], {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
+              Appointment at {formatAppointment(mine.scheduledFor)}
             </p>
           )}
-          {mine.status === "resolved" ? (
-            <p className="m-0 text-muted">
-              You&rsquo;ve been helped. Thanks for stopping by!
-            </p>
-          ) : (
-            <p className="m-0 text-muted">
-              {mine.status === "pending"
-                ? "Someone is helping you now."
-                : !mine.due
-                  ? "You join the line at your appointment time."
-                  : ahead === 0
-                    ? "You're next!"
-                    : ahead === 1
-                      ? "1 person ahead of you."
-                      : `${ahead} people ahead of you.`}
-            </p>
-          )}
+          <p className="m-0 text-muted">
+            {mine.due
+              ? "You’re checked in. Someone will come help you."
+              : "You’re checked in. You join the line at your appointment time."}
+          </p>
           <div className="mt-[0.35rem] flex flex-wrap items-center gap-3">
             {/* Only staff can take someone out of the line; this just clears
                 this device so the next person can join on it. Deliberately
@@ -225,127 +219,32 @@ export default function UserPage() {
                 there waiting, and nothing here is destructive. */}
             <button
               type="button"
-              className="self-start bg-transparent p-0 text-accent underline pointer-coarse:min-h-[2.75rem]"
+              className="self-start bg-transparent p-0 text-accent underline"
               onClick={forgetMyEntry}
             >
               Check someone else in
             </button>
           </div>
         </section>
-      ) : (
-        <form
-          className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
-          onSubmit={handleSubmit}
-        >
-          <label htmlFor="name">Your name</label>
-          <input
-            id="name"
-            value={name}
-            onChange={(event) => setName(event.target.value.slice(0, NAME_MAX))}
-            placeholder="e.g. Ada Lovelace"
-            maxLength={NAME_MAX}
-            autoComplete="name"
-            required
-            aria-describedby="name-count"
-          />
-          {/* Counters carry no aria-live: a per-keystroke countdown is pure
-              noise for a screen reader, and aria-describedby already links
-              them to their field. */}
-          {name.length >= NAME_COUNTER_FROM && (
-            <p
-              id="name-count"
-              className={`mt-[-0.25rem] mr-0 mb-0 ml-0 text-right text-[0.8rem] ${name.length >= NAME_MAX ? "font-semibold text-new" : "text-muted"}`}
-            >
-              {name.length >= NAME_MAX
-                ? `Character limit reached (${NAME_MAX})`
-                : `${NAME_MAX - name.length} characters left`}
-            </p>
-          )}
-
-          <p className="mt-1 mb-0 text-muted">
-            The rest is optional — it saves time later, and only staff see it.
-          </p>
-
-          <div className="flex flex-wrap gap-x-3 gap-y-2">
-            <div className="flex flex-[1_1_12rem] flex-col gap-2">
-              <label htmlFor="dob">Date of birth</label>
-              <input
-                id="dob"
-                type="date"
-                value={dob}
-                onChange={(event) => setDob(event.target.value)}
-                max={todayLocal()}
-              />
-            </div>
-            <div className="flex flex-[1_1_12rem] flex-col gap-2">
-              <label htmlFor="phone">Phone number</label>
-              <input
-                id="phone"
-                type="tel"
-                value={phone}
-                onChange={(event) =>
-                  setPhone(event.target.value.slice(0, PHONE_MAX))
-                }
-                placeholder="e.g. 503-555-0142"
-                maxLength={PHONE_MAX}
-                autoComplete="tel"
-              />
-            </div>
-          </div>
-
-          <label htmlFor="gender">Gender</label>
-          <select
-            id="gender"
-            value={gender}
-            onChange={(event) => setGender(event.target.value as Gender | "")}
-          >
-            <option value="">—</option>
-            {GENDERS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-
-          <button type="submit" disabled={submitting || !name.trim()}>
-            {submitting ? "Checking in…" : "Check in"}
+      ) : !showForm ? (
+        <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
+          <button type="button" onClick={() => setShowForm(true)}>
+            {checkedInBefore ? "Check someone else in" : "Check someone in"}
           </button>
-          {error && <p className="m-0 text-[0.9rem] text-danger">{error}</p>}
-        </form>
+        </section>
+      ) : (
+        <CheckInForm
+          onSubmit={handleSubmit}
+          onCancel={cancelForm}
+          submitting={submitting}
+          error={error}
+        />
       )}
 
-      <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
-        <h2 className="mx-0 mt-0 mb-1 text-[1.15rem]">
-          Currently waiting{loaded ? ` (${waiting.length})` : ""}
-        </h2>
-        {!loaded ? (
-          <p className="mt-1 mb-0 text-muted">Loading the line…</p>
-        ) : waiting.length === 0 ? (
-          <p className="mt-1 mb-0 text-muted">Nobody in line right now.</p>
-        ) : (
-          <ul className="m-0 flex list-none flex-col gap-[0.4rem] p-0 kiosk:text-[1.125rem]">
-            {waiting.map((entry) => (
-              <li
-                key={entry.id}
-                className={`flex items-center gap-3 pointer-coarse:py-[0.15rem] ${
-                  mine && entry.id === mine.id ? "font-bold" : ""
-                }`}
-              >
-                <span className="min-w-[2.5rem] font-bold text-muted tabular-nums">
-                  #{entry.id}
-                </span>
-                <span className="flex-1">{entry.name}</span>
-                <span className={`${BADGE} ${BADGE_COLOR[entry.status]}`}>
-                  {STATUS_LABEL[entry.status]}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <WaitingList waiting={waiting} loaded={loaded} mineId={mine?.id} />
 
       {/* Staff would otherwise have to know to type "#/admin" by hand. */}
-      <p className="m-0 text-center text-[0.85rem] text-muted">
+      <p className="m-0 text-center text-meta text-muted">
         <a href="#/admin">Staff sign-in</a>
       </p>
     </main>

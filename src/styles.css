@@ -8,13 +8,152 @@
   --color-row-line: #eef1f4;
   --color-text: #1b1f24;
   --color-muted: #6b7280;
-  --color-accent: #2563eb;
-  --color-new: #b45309;
-  --color-pending: #1d4ed8;
-  --color-resolved: #15803d;
+  /* Status hues come from two published colour-blind-safe palettes rather than
+     being picked by eye: Okabe-Ito for the blues, Paul Tol's "muted" set where
+     a colour has to carry small text at 4.5:1 on white. Every pair that can
+     appear together stays >=13 apart (CIEDE2000) under protanopia,
+     deuteranopia and tritanopia. */
+  /* Okabe-Ito blue. */
+  --color-accent: #0072b2;
+  /* Tol muted wine. */
+  --color-new: #882255;
+  /* Tol muted indigo. Distinct from the accent so the "being helped" badge and
+     board numerals read as a status rather than as the UI's own voice, which
+     sharing #0072b2 made them do. */
+  --color-pending: #332288;
+  /* Okabe-Ito vermillion. Alternates with the board's blue so two numbers side
+     by side never read as one; the pair holds up under every kind of colour
+     blindness, where blue against violet or green would not. Board numerals
+     only — at 3.87:1 it clears WCAG for large text, not for body text. */
+  --color-pending-alt: #d55e00;
+  /* Tol muted green. Sits only 4.1 from --color-pending under tritanopia, which
+     is safe today because the one list carrying status badges drops resolved
+     entries before rendering — worth re-checking before showing the two
+     badges side by side. */
+  --color-resolved: #117733;
   --color-danger: #b91c1c;
   --color-emergency: #b91c1c;
-  --color-urgent: #b45309;
+  /* Tol muted purple. Was the same amber as --color-new, which sat 5.5 from
+     emergency red under deuteranopia — the two triage levels that most need
+     telling apart. */
+  --color-urgent: #aa4499;
+
+  /* Banner tones: a tinted surface, its border, and ink that clears 4.5:1 on
+     that tint. Not part of the colour-blind-safe sets above — nothing is told
+     apart by these, they carry words. Caution keeps its own amber ink because
+     no palette colour is dark enough to read on the amber tint; the alert
+     banner uses --color-danger, which is. */
+  --color-caution: #8a5200;
+  --color-caution-surface: #fff4e5;
+  --color-caution-border: #f0c48a;
+  --color-alert-surface: #fdecec;
+  --color-alert-border: #e5a3a3;
+
+  /* Four named steps instead of nineteen hand-written sizes. The board's
+     display numerals stay one-off: each is used once, and naming them would
+     add vocabulary nothing else reuses. */
+  --text-fine: 0.75rem;
+  --text-meta: 0.85rem;
+  --text-lead: 1.15rem;
+  --text-title: 1.6rem;
+  /* The kiosk counterpart to --text-title, for a page read across a room. */
+  --text-title-kiosk: 2rem;
+
+  /* Two letter-spacings for the uppercase labels, which had drifted to four
+     values within 0.05em of each other. */
+  --tracking-label: 0.04em;
+  --tracking-label-wide: 0.08em;
+
+  /* The width a form with a textarea stops growing at, so the lines stay
+     readable. Distinct from a page's own max width. */
+  --container-editor: 44rem;
+  /* What a page opened on a kiosk widens to. Equal to --container-editor by
+     coincidence, not by rule: one bounds a line of prose, the other a whole
+     page, and they are free to move apart. */
+  --container-kiosk: 44rem;
+}
+
+/* Phone-width portrait: dialog buttons stack instead of sitting in a row.
+   Named for the same reason as the two variants below — a bare max-[480px]
+   in a class list says nothing about what changes there. */
+@custom-variant narrow {
+  @media (max-width: 480px) {
+    @slot;
+  }
+}
+
+/* A secondary button: the same shape as the default, in the surface colours.
+   A utility rather than a shared string so both consoles pick it up from one
+   place. */
+@utility btn-secondary {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+/* One column of a wrapping form row: grow, shrink, and never narrower than a
+   date or phone field wants to be. */
+@utility field {
+  flex: 1 1 12rem;
+}
+
+/* The same, for a field that needs the room an address or a name wants. */
+@utility field-wide {
+  flex: 1 1 16rem;
+}
+
+/* The page's own gutters. The insets keep content clear of a notch or a home
+   indicator, and the deeper bottom one clears the browser chrome that sits
+   over the foot of the page on a phone. */
+@utility page-inset {
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(4rem, env(safe-area-inset-bottom));
+  padding-left: max(1rem, env(safe-area-inset-left));
+}
+
+/* A line of standing text about the state of things. Caution says "know
+   this"; alert says "someone has to act", and carries the heavier left rule
+   to say so. Both were written out class by class in three places. */
+/* Shape and rhythm only. The border belongs to each variant below: a shared
+   `border` shorthand here would have to be overridden by banner-alert's
+   heavier left rule, which only works while the two land in this order. */
+@utility banner {
+  margin: 0;
+  border-radius: 0.5rem;
+  padding-inline: 0.9rem;
+  font-size: var(--text-meta);
+}
+
+@utility banner-caution {
+  padding-block: 0.6rem;
+  border: 1px solid var(--color-caution-border);
+  background: var(--color-caution-surface);
+  color: var(--color-caution);
+}
+
+@utility banner-alert {
+  padding-block: 0.7rem;
+  border: 1px solid var(--color-alert-border);
+  border-left: 4px solid var(--color-danger);
+  background: var(--color-alert-surface);
+  line-height: 1.45;
+  color: var(--color-danger);
+}
+
+/* Both dialogs are the same card floated over a dimmed page. */
+@utility modal-shell {
+  margin: auto;
+  width: calc(100% - 2rem);
+  max-width: 26rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 1.5rem;
+  color: var(--color-text);
+
+  &::backdrop {
+    background: rgb(0 0 0 / 0.45);
+  }
 }
 
 /* Kiosk scaling: a tablet-sized screen showing a visitor page reads from

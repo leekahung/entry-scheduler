@@ -10,8 +10,8 @@ import {
   TIME_MAX,
   TIME_STEP,
 } from "../server/codes";
+import { MAX_ADMIN_NOTE, MAX_NAME } from "../server/validate";
 import {
-  ADMIN_NOTE_MAX,
   PRIORITIES,
   PRIORITY_LABEL,
   type AdminEntry,
@@ -20,7 +20,8 @@ import {
   type Priority,
 } from "./api";
 import ConfirmDialog from "./ConfirmDialog";
-import { fromLocalInput, toLocalInput, todayLocal } from "./time";
+import { CodeSelect, DobField, PhoneField } from "./fields";
+import { fromLocalInput, toLocalInput } from "./time";
 import type { EntryChanges } from "./useEntries";
 
 /** The form's own shape: every field a string or code the inputs can hold. */
@@ -128,70 +129,45 @@ export default function EntryEditor({
       </p>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label className="my-2 block" htmlFor={`dob-${entry.id}`}>
-            Date of birth
-          </label>
-          <input
+        <div className="flex field flex-col gap-2">
+          <DobField
             id={`dob-${entry.id}`}
-            type="date"
             value={draft.dob}
-            onChange={(event) => set("dob", event.target.value)}
-            max={todayLocal()}
+            onChange={(value) => set("dob", value)}
+            labelClassName="my-2 block"
           />
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label className="my-2 block" htmlFor={`phone-${entry.id}`}>
-            Phone number
-          </label>
-          <input
+        <div className="flex field flex-col gap-2">
+          <PhoneField
             id={`phone-${entry.id}`}
-            type="tel"
             value={draft.phone}
-            onChange={(event) => set("phone", event.target.value)}
-            maxLength={30}
+            onChange={(value) => set("phone", value)}
+            labelClassName="my-2 block"
           />
         </div>
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label className="my-2 block" htmlFor={`gender-${entry.id}`}>
-            Gender
-          </label>
-          <select
+        <div className="flex field flex-col gap-2">
+          <CodeSelect
             id={`gender-${entry.id}`}
+            label="Gender"
             value={draft.gender}
-            onChange={(event) =>
-              set("gender", event.target.value as Intake["gender"])
-            }
-          >
-            <option value="">—</option>
-            {GENDERS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            codes={GENDERS}
+            onChange={(value) => set("gender", value)}
+            labelClassName="my-2 block"
+          />
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label className="my-2 block" htmlFor={`caseType-${entry.id}`}>
-            Case type
-          </label>
-          <select
+        <div className="flex field flex-col gap-2">
+          <CodeSelect
             id={`caseType-${entry.id}`}
+            label="Case type"
             value={draft.caseType}
-            onChange={(event) =>
-              set("caseType", event.target.value as Intake["caseType"])
-            }
-          >
-            <option value="">—</option>
-            {CASE_TYPES_BY_LABEL.map((type) => (
-              <option key={type} value={type}>
-                {CASE_TYPE_LABEL[type]}
-              </option>
-            ))}
-          </select>
+            codes={CASE_TYPES_BY_LABEL}
+            labelFor={(type) => CASE_TYPE_LABEL[type]}
+            onChange={(value) => set("caseType", value)}
+            labelClassName="my-2 block"
+          />
         </div>
       </div>
 
@@ -203,14 +179,14 @@ export default function EntryEditor({
         className="mb-3 max-w-[18rem]"
         value={draft.helpedBy}
         onChange={(event) => set("helpedBy", event.target.value)}
-        maxLength={80}
+        maxLength={MAX_NAME}
         placeholder="Leave blank if nobody has helped yet"
         // biome-ignore lint/a11y/noAutofocus: the editor opens on an explicit click, so focus follows intent
         autoFocus
       />
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+        <div className="flex field flex-col gap-2">
           <label className="my-2 block" htmlFor={`when-${entry.id}`}>
             Appointment time
           </label>
@@ -221,7 +197,7 @@ export default function EntryEditor({
             onChange={(event) => set("scheduledFor", event.target.value)}
           />
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+        <div className="flex field flex-col gap-2">
           <label className="my-2 block" htmlFor={`priority-${entry.id}`}>
             Triage level
           </label>
@@ -242,54 +218,30 @@ export default function EntryEditor({
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label className="my-2 block" htmlFor={`apptType-${entry.id}`}>
-            Appointment type
-          </label>
-          <select
+        <div className="flex field flex-col gap-2">
+          <CodeSelect
             id={`apptType-${entry.id}`}
+            label="Appointment type"
             value={draft.appointmentType}
-            onChange={(event) =>
-              set(
-                "appointmentType",
-                event.target.value as CaseDetails["appointmentType"],
-              )
-            }
-          >
-            <option value="">—</option>
-            {APPOINTMENT_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+            codes={APPOINTMENT_TYPES}
+            onChange={(value) => set("appointmentType", value)}
+            labelClassName="my-2 block"
+          />
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
-          <label className="my-2 block" htmlFor={`apptOutcome-${entry.id}`}>
-            Appointment outcome
-          </label>
-          <select
+        <div className="flex field flex-col gap-2">
+          <CodeSelect
             id={`apptOutcome-${entry.id}`}
+            label="Appointment outcome"
             value={draft.appointmentOutcome}
-            onChange={(event) =>
-              set(
-                "appointmentOutcome",
-                event.target.value as CaseDetails["appointmentOutcome"],
-              )
-            }
-          >
-            <option value="">—</option>
-            {APPOINTMENT_OUTCOMES.map((outcome) => (
-              <option key={outcome} value={outcome}>
-                {outcome}
-              </option>
-            ))}
-          </select>
+            codes={APPOINTMENT_OUTCOMES}
+            onChange={(value) => set("appointmentOutcome", value)}
+            labelClassName="my-2 block"
+          />
         </div>
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+        <div className="flex field flex-col gap-2">
           <label className="my-2 block" htmlFor={`legalOutcome-${entry.id}`}>
             Legal outcome
           </label>
@@ -315,7 +267,7 @@ export default function EntryEditor({
             ))}
           </select>
         </div>
-        <div className="flex flex-[1_1_12rem] flex-col gap-2">
+        <div className="flex field flex-col gap-2">
           <label className="my-2 block" htmlFor={`time-${entry.id}`}>
             Time (hours, 0.25 steps)
           </label>
@@ -336,18 +288,18 @@ export default function EntryEditor({
       </label>
       <textarea
         id={`note-${entry.id}`}
-        className="max-w-[44rem]"
+        className="max-w-editor"
         value={draft.adminNote}
         onChange={(event) =>
-          set("adminNote", event.target.value.slice(0, ADMIN_NOTE_MAX))
+          set("adminNote", event.target.value.slice(0, MAX_ADMIN_NOTE))
         }
-        maxLength={ADMIN_NOTE_MAX}
+        maxLength={MAX_ADMIN_NOTE}
         rows={3}
         placeholder="Only staff can see this."
       />
-      <div className="mt-2 flex max-w-[44rem] flex-wrap items-center justify-end gap-2 card-mode:justify-stretch">
-        <span className="mr-auto text-left text-[0.8rem] text-muted card-mode:mr-0 card-mode:mb-1 card-mode:flex-[1_0_100%]">
-          {ADMIN_NOTE_MAX - draft.adminNote.length} characters left
+      <div className="mt-2 flex max-w-editor flex-wrap items-center justify-end gap-2 card-mode:justify-stretch">
+        <span className="mr-auto text-left text-meta text-muted card-mode:mr-0 card-mode:mb-1 card-mode:flex-[1_0_100%]">
+          {MAX_ADMIN_NOTE - draft.adminNote.length} characters left
         </span>
         <button
           type="button"

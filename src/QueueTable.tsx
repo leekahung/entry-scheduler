@@ -4,7 +4,6 @@ import {
   missingForLog,
   PRIORITIES,
   PRIORITY_LABEL,
-  STATUS_LABEL,
   type AdminEntry,
   type Priority,
   type Status,
@@ -33,29 +32,20 @@ const LONG_WAIT_MINUTES = 30;
 const CELL =
   "px-3 py-[0.7rem] text-left align-middle [overflow-wrap:anywhere] border-b border-row-line card-mode:flex card-mode:items-baseline card-mode:gap-2 card-mode:border-0 card-mode:px-0 card-mode:py-[0.15rem]";
 
-const LABELLED_CELL = `${CELL} card-mode:before:block card-mode:before:flex-[0_0_5.5rem] card-mode:before:text-[0.75rem] card-mode:before:font-bold card-mode:before:tracking-[0.03em] card-mode:before:text-muted card-mode:before:uppercase card-mode:before:content-[attr(data-label)]`;
+const LABELLED_CELL = `${CELL} card-mode:before:block card-mode:before:flex-[0_0_5.5rem] card-mode:before:text-fine card-mode:before:font-bold card-mode:before:tracking-label card-mode:before:text-muted card-mode:before:uppercase card-mode:before:content-[attr(data-label)]`;
 
 const HEAD_CELL =
-  "px-3 pt-[0.7rem] pb-[0.4rem] text-left align-middle text-[0.75rem] tracking-[0.04em] text-muted uppercase border-b border-border";
+  "px-3 pt-[0.7rem] pb-[0.4rem] text-left align-middle text-fine tracking-label text-muted uppercase border-b border-border";
 
 // Fixed widths per action so the column does not reflow when a label changes
 // ("Start helping" -> "Mark helped" -> "Reopen").
 const ACTION =
-  "px-[0.6rem] py-[0.35rem] text-[0.85rem] pointer-fine:min-h-[2rem] pointer-fine:px-2 pointer-fine:py-[0.3rem] card-mode:min-w-[6rem] card-mode:flex-[1_1_auto] card-mode:px-3 card-mode:py-[0.6rem] card-mode:text-[0.95rem]";
+  "px-[0.6rem] py-[0.35rem] text-meta pointer-fine:min-h-[2rem] pointer-fine:px-2 pointer-fine:py-1 card-mode:min-w-[6rem] card-mode:flex-[1_1_auto] card-mode:px-3 card-mode:py-[0.6rem] card-mode:text-[0.95rem]";
 
 // Card mode turns every row into a card; the editor row gets the same shell
 // so it reads as part of the entry it belongs to.
 const ROW =
   "card-mode:mb-3 card-mode:block card-mode:rounded-xl card-mode:border card-mode:border-border card-mode:bg-surface card-mode:px-4 card-mode:py-[0.85rem]";
-
-const BADGE =
-  "whitespace-nowrap rounded-full border border-current px-2 py-[0.15rem] text-[0.75rem] font-bold uppercase tracking-[0.03em]";
-
-const BADGE_COLOR: Record<Status, string> = {
-  new: "text-new",
-  pending: "text-pending",
-  resolved: "text-resolved",
-};
 
 const TRIAGE_COLOR: Record<Priority, string> = {
   emergency: "text-emergency border-emergency",
@@ -66,7 +56,7 @@ const TRIAGE_COLOR: Record<Priority, string> = {
 // Two different voices under one name: what the visitor asked for, and what
 // staff wrote about it. Labelled so they are never confused.
 const NOTE =
-  "mt-[0.3rem] block border-l-2 pl-[0.55rem] text-[0.88rem] font-normal before:block before:text-[0.7rem] before:font-bold before:tracking-[0.04em] before:text-muted before:uppercase card-mode:text-[0.85rem]";
+  "mt-1 block border-l-2 pl-[0.55rem] text-meta font-normal before:block before:text-fine before:font-bold before:tracking-label before:text-muted before:uppercase card-mode:text-meta";
 
 type Props = {
   rows: AdminEntry[];
@@ -120,10 +110,6 @@ export default function QueueTable({
           <th scope="col" className={`${HEAD_CELL} w-[8.25rem]`}>
             Triage
           </th>
-          {/* Fits the longest badge ("Being helped") without overflowing. */}
-          <th scope="col" className={`${HEAD_CELL} w-[9rem]`}>
-            Status
-          </th>
           <th scope="col" className={`${HEAD_CELL} w-[8rem]`}>
             Waiting
           </th>
@@ -174,12 +160,12 @@ export default function QueueTable({
                   )}
                 </td>
                 <td
-                  className={`${CELL} font-semibold card-mode:block card-mode:pt-0 card-mode:pb-2 card-mode:text-[1.2rem]`}
+                  className={`${CELL} font-semibold card-mode:block card-mode:pt-0 card-mode:pb-2 card-mode:text-lead`}
                 >
                   {entry.name}
                   {entry.note && (
                     <span
-                      className={`${NOTE} border-l-[#cfd6dd] text-text before:content-['Asked_for']`}
+                      className={`${NOTE} border-l-border text-text before:content-['Asked_for']`}
                     >
                       {entry.note}
                     </span>
@@ -198,7 +184,7 @@ export default function QueueTable({
                     // long labels are written for visitors and run to several
                     // lines in a column this wide.
                     <span
-                      className="text-[0.85rem]"
+                      className="text-meta"
                       title={CASE_TYPE_LABEL[entry.caseType]}
                     >
                       {entry.caseType}
@@ -211,7 +197,7 @@ export default function QueueTable({
                   {/* A select rather than a badge: retriaging is the whole
                       point of a triage queue, so it should be one click. */}
                   <select
-                    className={`min-h-[2.25rem] px-[0.4rem] py-1 text-[0.85rem] font-semibold card-mode:max-w-[12rem] ${TRIAGE_COLOR[entry.priority]}`}
+                    className={`pointer-fine:min-h-[2.25rem] px-[0.4rem] py-1 text-meta font-semibold card-mode:max-w-[12rem] ${TRIAGE_COLOR[entry.priority]}`}
                     value={entry.priority}
                     onChange={(event) =>
                       onPriority(entry, event.target.value as Priority)
@@ -225,17 +211,12 @@ export default function QueueTable({
                     ))}
                   </select>
                 </td>
-                <td data-label="Status" className={LABELLED_CELL}>
-                  <span className={`${BADGE} ${BADGE_COLOR[entry.status]}`}>
-                    {STATUS_LABEL[entry.status]}
-                  </span>
-                </td>
                 <td data-label="Waiting" className={LABELLED_CELL}>
                   <span className="flex flex-col leading-[1.3] whitespace-nowrap">
                     {entry.scheduledFor && (
                       /* Wraps inside the nowrap column, which only needs to
                          keep the date and the time each on their own line. */
-                      <span className="text-[0.7rem] font-bold tracking-[0.03em] whitespace-normal text-accent uppercase">
+                      <span className="text-fine font-bold tracking-label whitespace-normal text-accent uppercase">
                         Appointment {formatAppointment(entry.scheduledFor)}
                       </span>
                     )}
@@ -252,14 +233,14 @@ export default function QueueTable({
                         >
                           {wait.label}
                         </span>
-                        <span className="text-[0.8rem] text-muted">
+                        <span className="text-meta text-muted">
                           since {formatTime(waitingSince)}
                         </span>
                       </>
                     ) : (
                       // Nobody is waiting here: the entry is either finished
                       // or an appointment whose time has not come round yet.
-                      <span className="text-[0.8rem] text-muted">
+                      <span className="text-meta text-muted">
                         {entry.status === "resolved" ? "" : "booked "}
                         {formatTime(entry.createdAt)}
                       </span>
@@ -307,7 +288,7 @@ export default function QueueTable({
               {editingId === entry.id && draft && initialDraft && (
                 <tr className={`${ROW} card-mode:-mt-2`}>
                   <td
-                    colSpan={8}
+                    colSpan={7}
                     className="bg-bg px-3 pt-[0.85rem] pb-4 card-mode:block card-mode:px-0 card-mode:py-[0.85rem]"
                   >
                     <EntryEditor
