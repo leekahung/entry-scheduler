@@ -51,6 +51,40 @@ describe("the staff tab as a record format", () => {
     expect(fromStaffValues(rows)[0].role).toBe("staff");
   });
 
+  it("keeps one row per address when the sheet was edited by hand", () => {
+    const [header] = toStaffValues([]);
+    const rows = [
+      header,
+      ["kim@clinic.org", "staff", "boss@clinic.org", "2026-08-01"],
+      // Same person, differently cased: still one entry, not two.
+      ["KIM@clinic.org", "staff", "sam@clinic.org", "2026-08-20"],
+    ];
+    const read = fromStaffValues(rows);
+    expect(read).toHaveLength(1);
+    // The lower row is the later grant, so it supplies the details.
+    expect(read[0].addedBy).toBe("sam@clinic.org");
+  });
+
+  it("takes the lesser role when two hand-typed rows disagree", () => {
+    const [header] = toStaffValues([]);
+    // Whichever way round they are typed, a conflict must not grant more than
+    // the cautious reading of the tab: only staff is said by every row.
+    for (const pair of [
+      [
+        ["kim@clinic.org", "staff", "", ""],
+        ["kim@clinic.org", "owner", "", ""],
+      ],
+      [
+        ["kim@clinic.org", "owner", "", ""],
+        ["kim@clinic.org", "staff", "", ""],
+      ],
+    ]) {
+      const read = fromStaffValues([header, ...pair]);
+      expect(read).toHaveLength(1);
+      expect(read[0].role).toBe("staff");
+    }
+  });
+
   it("lower-cases addresses so case cannot smuggle in a duplicate", () => {
     const [header] = toStaffValues([]);
     const rows = [header, ["KIM@Clinic.org", "owner", "", ""]];

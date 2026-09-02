@@ -5,7 +5,11 @@ import path from "node:path";
 import request from "supertest";
 import { createApp, isLocalAddress, publicName } from "./app.js";
 import { fakeSheet } from "./sheet.fixture.js";
-import { createStaffStore, type StaffStore } from "./staff.js";
+import {
+  createStaffStore,
+  type StaffMember,
+  type StaffStore,
+} from "./staff.js";
 import { createStore, type Store } from "./store.js";
 import {
   SESSION_COOKIE,
@@ -1173,10 +1177,43 @@ describe("managing who has access", () => {
     }
   });
 
-  it("will not let an owner remove their own access", async () => {
+  it("lists a server-set owner once and names their leftover row", async () => {
+    await staff.add("boss@clinic.org", "staff", "boss@clinic.org");
+    const res = await request(withStaff)
+      .get("/api/admin/staff")
+      .set("cookie", as("boss@clinic.org"));
+    expect(res.body.bootstrapOwners).toEqual(["boss@clinic.org"]);
+    // Listed as an owner above, so listing the row here too would show the
+    // same address twice — but it still has to be named as removable.
+    expect(res.body.members.map((m: StaffMember) => m.email)).not.toContain(
+      "boss@clinic.org",
+    );
+    expect(res.body.redundantRows).toEqual(["boss@clinic.org"]);
+  });
+
+  it("clears a leftover row without taking the environment's access away", async () => {
+    await staff.add("boss@clinic.org", "staff", "boss@clinic.org");
     const res = await request(withStaff)
       .delete("/api/admin/staff/boss@clinic.org")
       .set("cookie", as("boss@clinic.org"));
+    expect(res.status).toBe(204);
+    expect(await staff.list()).toEqual([]);
+
+    // The environment still grants the access the row was shadowing.
+    const still = await request(withStaff)
+      .get("/api/admin/staff")
+      .set("cookie", as("boss@clinic.org"));
+    expect(still.status).toBe(200);
+    expect(still.body.redundantRows).toEqual([]);
+  });
+
+  it("will not let an owner remove their own access", async () => {
+    // An owner from the tab, not the environment: an environment owner keeps
+    // their access whatever the tab says, so removing their row is allowed.
+    await staff.add("kim@clinic.org", "owner", "boss@clinic.org");
+    const res = await request(withStaff)
+      .delete("/api/admin/staff/kim@clinic.org")
+      .set("cookie", as("kim@clinic.org"));
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("your own access");
   });
@@ -1195,6 +1232,15 @@ describe("managing who has access", () => {
       .delete("/api/admin/staff/nobody@clinic.org")
       .set("cookie", as("boss@clinic.org"));
     expect(res.status).toBe(404);
+  });
+
+  it("will not add a row for an address the environment already owns", async () => {
+    const res = await request(withStaff)
+      .post("/api/admin/staff")
+      .set("cookie", as("boss@clinic.org"))
+      .send({ email: "boss@clinic.org", role: "staff" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("set on the server");
   });
 
   it("changes a role rather than duplicating the row", async () => {

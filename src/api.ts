@@ -197,6 +197,8 @@ export type StaffList = {
   you: { email: string; role: StaffRole } | null;
   /** Owners set in the server's environment; not removable from the console. */
   bootstrapOwners: string[];
+  /** Those of them that also carry a staff-tab row, which grants nothing. */
+  redundantRows: string[];
   members: StaffMember[];
 };
 

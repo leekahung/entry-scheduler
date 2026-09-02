@@ -471,12 +471,26 @@ export function createApp(
     wrap(async (req, res) => {
       const auth = authConfig();
       const who = await identify(req);
+      const rows = (await staff?.list()) ?? [];
       res.json({
         you: who,
         // Named separately so the console can show they are not removable
         // here rather than offering a button that cannot work.
         bootstrapOwners: [...(auth?.allowed ?? [])],
-        members: (await staff?.list()) ?? [],
+        // A row for an address the environment already owns grants nothing —
+        // `identify` answers "owner" before it reads the tab — so listing it
+        // among the members would show that address twice.
+        members: rows.filter(
+          (member) => !auth || !isBootstrapOwner(auth, member.email),
+        ),
+        // ...but it must not become invisible either: dropped from the
+        // environment later, a forgotten row would quietly grant access again.
+        // Named here so the console can offer to clear it out.
+        redundantRows: auth
+          ? rows
+              .filter((member) => isBootstrapOwner(auth, member.email))
+              .map((member) => member.email)
+          : [],
       });
     }),
   );
@@ -497,6 +511,14 @@ export function createApp(
         return;
       }
 
+      const auth = authConfig();
+      if (auth && isBootstrapOwner(auth, email)) {
+        res.status(400).json({
+          error: `${email} is already an owner set on the server.`,
+        });
+        return;
+      }
+
       const who = await identify(req);
       res.status(201).json(await staff?.add(email, role, who?.email ?? ""));
     }),
@@ -511,16 +533,24 @@ export function createApp(
       const who = await identify(req);
       const auth = authConfig();
 
+      // Checked before the two guards below: clearing a leftover row takes
+      // nobody's access away, because the environment still grants it. That
+      // makes it safe even when the address is the caller's own.
+      if (auth && isBootstrapOwner(auth, email)) {
+        if (await staff?.remove(email)) {
+          res.status(204).end();
+          return;
+        }
+        res.status(400).json({
+          error: `${email} is an owner set on the server and cannot be removed here.`,
+        });
+        return;
+      }
+
       // Removing yourself is never what was meant, and it is the one mistake
       // that takes away the ability to undo itself.
       if (who && email === who.email) {
         res.status(400).json({ error: "You cannot remove your own access." });
-        return;
-      }
-      if (auth && isBootstrapOwner(auth, email)) {
-        res.status(400).json({
-          error: `${email} is an owner set on the server and cannot be removed here.`,
-        });
         return;
       }
 

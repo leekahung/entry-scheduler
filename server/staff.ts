@@ -48,7 +48,7 @@ export function toStaffValues(members: StaffMember[]): string[][] {
 /**
  * Members as read back from the tab, keyed by header rather than position.
  * Rows without a usable address are skipped, so a note typed into the sheet
- * cannot grant anyone access.
+ * cannot grant anyone access, and an address appears at most once.
  */
 export function fromStaffValues(values: (string | number)[][]): StaffMember[] {
   const [header, ...rows] = values;
@@ -59,20 +59,27 @@ export function fromStaffValues(values: (string | number)[][]): StaffMember[] {
     return index === -1 ? "" : String(row[index] ?? "");
   };
 
-  const members: StaffMember[] = [];
+  // Keyed by address: `add` never writes a second row, but a sheet edited by
+  // hand can, and two rows disagreeing about a role must not be shown twice.
+  // The lower row is the later grant, so it supplies the details.
+  const members = new Map<string, StaffMember>();
   for (const row of rows) {
     const email = normalizeEmail(at(row, "email"));
     if (!isEmailish(email)) continue;
     const role = at(row, "role");
-    members.push({
+    const seen = members.get(email);
+    members.set(email, {
       email,
-      // An unreadable role is the lesser privilege, never the greater one.
-      role: isRole(role) ? role : "staff",
+      // An unreadable role is the lesser privilege, never the greater one —
+      // and so is a disagreement between two rows. Only a hand edit can put
+      // the same address on the tab twice, so "owner" has to be said by every
+      // row that mentions them, not just the last one.
+      role: isRole(role) && seen?.role !== "staff" ? role : "staff",
       addedBy: at(row, "addedBy"),
       addedAt: at(row, "addedAt"),
     });
   }
-  return members;
+  return [...members.values()];
 }
 
 export type StaffStore = {
