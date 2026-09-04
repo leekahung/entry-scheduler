@@ -61,6 +61,8 @@ const NOTE =
 type Props = {
   rows: AdminEntry[];
   caption: string;
+  /** Shown in place of the rows, under the headers, when there are none. */
+  empty: string;
   editingId: number | null;
   /** Held by the page so it survives this row moving between tables. */
   draft: EditorDraft | null;
@@ -76,6 +78,7 @@ type Props = {
 export default function QueueTable({
   rows,
   caption,
+  empty,
   editingId,
   draft,
   initialDraft,
@@ -96,11 +99,13 @@ export default function QueueTable({
       <caption className="sr-only">{caption}</caption>
       <thead className="card-mode:hidden">
         <tr>
-          {/* Column widths: name takes the slack, everything else is pinned. */}
+          {/* Every column is pinned, so the spare width is shared out in
+            proportion and Name and Helped by stay the same size as each
+            other at any table width. */}
           <th scope="col" className={`${HEAD_CELL} w-[5rem]`}>
             #
           </th>
-          <th scope="col" className={HEAD_CELL}>
+          <th scope="col" className={`${HEAD_CELL} w-[12rem]`}>
             Name
           </th>
           <th scope="col" className={`${HEAD_CELL} w-[8.5rem]`}>
@@ -113,7 +118,7 @@ export default function QueueTable({
           <th scope="col" className={`${HEAD_CELL} w-[8rem]`}>
             Waiting
           </th>
-          <th scope="col" className={`${HEAD_CELL} w-[6rem]`}>
+          <th scope="col" className={`${HEAD_CELL} w-[12rem]`}>
             Helped by
           </th>
           {/* Holds all three action buttons on one line at their fixed widths. */}
@@ -123,6 +128,15 @@ export default function QueueTable({
         </tr>
       </thead>
       <tbody className="[&>tr:last-child>td]:border-b-0 card-mode:block">
+        {/* The headers stay whatever a tab holds, so an empty one still reads
+          as the same table rather than as a different kind of thing. */}
+        {rows.length === 0 && (
+          <tr>
+            <td colSpan={7} className="px-4 py-5 text-muted">
+              {empty}
+            </td>
+          </tr>
+        )}
         {rows.map((entry) => {
           const missing = missingForLog(entry);
           // An appointment is not late until its time comes round, so a
@@ -248,7 +262,20 @@ export default function QueueTable({
                   </span>
                 </td>
                 <td data-label="Helped by" className={LABELLED_CELL}>
-                  {entry.helpedBy || <span className="text-muted">—</span>}
+                  {entry.helpedBy ? (
+                    /* One line, cut with an ellipsis: an address is long
+                      enough to wrap and take the row's height with it. The
+                      full value stays on the title and in the card layout,
+                      which has the width to show it. */
+                    <span
+                      className="block truncate card-mode:overflow-visible card-mode:whitespace-normal"
+                      title={entry.helpedBy}
+                    >
+                      {entry.helpedBy}
+                    </span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
                 </td>
                 {/* The flex row lives in a wrapper: a <td> that is itself a
                     flex container stops being a real table cell, which breaks

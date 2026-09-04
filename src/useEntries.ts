@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ApiError,
+  archiveMonths,
   bookEntry,
-  clearAllEntries,
   deleteEntry,
   fetchAdminAlerts,
   fetchAllEntries,
@@ -56,7 +56,14 @@ export function useEntries(passcode: string, unlocked: boolean) {
     try {
       const [nextEntries, nextAlerts] = await Promise.all([
         fetchAllEntries(passcode),
-        fetchAdminAlerts(passcode),
+        // Owners only. A staff session is refused here, which is not a
+        // connection problem and must not read as one — they simply have no
+        // sign-in warning to see. Anything else is a real failure, and hiding
+        // it would leave an owner quietly blind to the warning.
+        fetchAdminAlerts(passcode).catch((err) => {
+          if (err instanceof ApiError && err.status === 403) return null;
+          throw err;
+        }),
       ]);
       setEntries(nextEntries);
       setAlerts(nextAlerts);
@@ -155,10 +162,13 @@ export function useEntries(passcode: string, unlocked: boolean) {
         setEntries((current) => current.filter((row) => row.id !== entry.id));
       }),
 
-    clearAll: () =>
-      run("Could not clear the queue.", async () => {
-        await clearAllEntries(passcode);
-        setEntries([]);
-      }),
+    // Nothing leaves the board: this only copies it into the month tabs.
+    saveMonths: async () => {
+      let saved: string[] = [];
+      const ok = await run("Could not save to the month tabs.", async () => {
+        saved = (await archiveMonths(passcode)).months;
+      });
+      return ok ? saved : null;
+    },
   };
 }

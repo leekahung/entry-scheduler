@@ -41,9 +41,14 @@ export type EditorDraft = {
 };
 
 /** Seeds a draft from an entry. Lives here so the shape stays with the form. */
-export function seedDraft(entry: AdminEntry): EditorDraft {
+/**
+ * The editor's starting values for one entry.
+ * `helper` is whoever the console is helping as, which stands in for an entry
+ * nobody has claimed yet — a name already recorded is never overwritten.
+ */
+export function seedDraft(entry: AdminEntry, helper = ""): EditorDraft {
   return {
-    helpedBy: entry.helpedBy,
+    helpedBy: entry.helpedBy || helper,
     adminNote: entry.adminNote,
     appointmentType: entry.appointmentType,
     appointmentOutcome: entry.appointmentOutcome,

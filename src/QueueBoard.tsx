@@ -6,11 +6,12 @@ const YOU = "text-fine font-bold tracking-label-wide text-muted uppercase";
 const PANEL_LABEL =
   "m-0 text-meta font-bold tracking-label-wide text-muted uppercase";
 
-// Bare numerals: size and colour carry the distinction, so nothing is drawn
-// around or under them.
-const NUMERAL = "font-extrabold tabular-nums leading-[1.05]";
-const NUMERAL_NEXT = `${NUMERAL} text-[3.4rem] text-accent kiosk:text-[4.25rem]`;
-const NUMERAL_HELPED = `${NUMERAL} text-[2.3rem] kiosk:text-[2.9rem]`;
+// Bare numerals: colour alone carries the distinction, so nothing is drawn
+// around or under them. Both panels are read from the same distance, so both
+// are set at the same size.
+const NUMERAL =
+  "font-extrabold tabular-nums leading-[1.05] text-[3.4rem] kiosk:text-[4.25rem]";
+const NUMERAL_NEXT = `${NUMERAL} text-accent`;
 // Alternating hues so two numbers side by side never read as one. Both differ
 // from the accent the "up next" numeral uses, so however many are being helped
 // the two panels never meet in the same colour.
@@ -40,7 +41,7 @@ export default function QueueBoard({ beingHelped, upNext, mineId }: Props) {
             {beingHelped.map((entry, index) => (
               <span key={entry.id} className="flex flex-col items-center">
                 <span
-                  className={`${NUMERAL_HELPED} ${
+                  className={`${NUMERAL} ${
                     HELPED_HUES[index % HELPED_HUES.length]
                   }`}
                 >

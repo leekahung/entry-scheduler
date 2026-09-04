@@ -36,6 +36,8 @@ export function useAdminSession() {
   const [mode, setMode] = useState<SignInMode>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<"owner" | "staff" | null>(null);
+  // Who Google says is at the console, for the console to help as.
+  const [name, setName] = useState("");
   const [passcode, setPasscode] = useState("");
   const [unlocked, setUnlocked] = useState(false);
   const [error, setError] = useState(takeAuthError);
@@ -55,6 +57,7 @@ export function useAdminSession() {
           if (!active || !me) return;
           setEmail(me.email);
           setRole(me.role);
+          setName(me.name);
           setSheetUrl(me.sheetUrl);
           setUnlocked(true);
           return;
@@ -126,6 +129,7 @@ export function useAdminSession() {
     setPasscode("");
     setEmail(null);
     setRole(null);
+    setName("");
     setUnlocked(false);
     setError(reason);
     setAttemptsLeft(null);
@@ -136,6 +140,7 @@ export function useAdminSession() {
     mode,
     email,
     role,
+    name,
     passcode,
     setPasscode,
     unlocked,

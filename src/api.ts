@@ -140,15 +140,20 @@ export async function bookEntry(
   );
 }
 
-/** Empties the queue and restarts numbering at #1. Admin only. */
-export async function clearAllEntries(passcode: string): Promise<number> {
-  const body = await parse<{ removed: number }>(
-    await fetch("/api/entries", {
-      method: "DELETE",
+/** What a save wrote: the month tabs touched, and how many rows went into them. */
+export type ArchiveResult = { months: string[]; entries: number };
+
+/**
+ * Saves the board into a tab per month it spans, leaving the board as it is.
+ * Admin only.
+ */
+export async function archiveMonths(passcode: string): Promise<ArchiveResult> {
+  return parse<ArchiveResult>(
+    await fetch("/api/entries/archive", {
+      method: "POST",
       headers: adminHeaders(passcode),
     }),
   );
-  return body.removed;
 }
 
 export type AuthMode = { google: boolean };
@@ -161,6 +166,8 @@ export async function fetchAuthMode(): Promise<AuthMode> {
 export type SignedIn = {
   email: string;
   role: StaffRole;
+  /** What Google calls them, for "Helping as". Empty when it said nothing. */
+  name: string;
   sheetUrl: string | null;
 };
 
@@ -173,6 +180,7 @@ export async function fetchSignedInEmail(): Promise<SignedIn | null> {
     ? {
         email: body.email,
         role: body.role === "owner" ? "owner" : "staff",
+        name: body.name ?? "",
         sheetUrl: body.sheetUrl ?? null,
       }
     : null;

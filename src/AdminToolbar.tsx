@@ -1,4 +1,5 @@
 import type { AdminEntry } from "./api";
+import { DownloadIcon, ExternalIcon, SignOutIcon } from "./icons";
 
 type Props = {
   entries: AdminEntry[];
@@ -11,7 +12,10 @@ type Props = {
   onToggleBooking: () => void;
   onExport: () => void;
   onSignOut: () => void;
-  onClearAll: () => void;
+  /** Whether this session may change who has access at all. */
+  manageStaff: boolean;
+  showStaff: boolean;
+  onToggleStaff: () => void;
 };
 
 /** Title, the state of the room in one line, and the console's actions. */
@@ -25,22 +29,67 @@ export default function AdminToolbar({
   onToggleBooking,
   onExport,
   onSignOut,
-  onClearAll,
+  manageStaff,
+  showStaff,
+  onToggleStaff,
 }: Props) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h1 className="m-0 text-title">Queue admin</h1>
-        <p className="mt-1 mb-0 text-muted">
-          {inRoom - beingHelped} waiting · {beingHelped} being helped ·{" "}
-          {entries.filter((e) => e.status !== "resolved" && !e.due).length}{" "}
-          scheduled later ·{" "}
-          {entries.filter((e) => e.status === "resolved").length} done
-        </p>
-        {email && (
-          <p className="mt-1 mb-0 text-meta text-muted">Signed in as {email}</p>
-        )}
+    <header className="flex flex-col gap-3">
+      {/* Two rows: the account and the record sit top right, out of the way of
+        the work; what staff reach for while working the queue sits below. */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="m-0 text-title">Queue admin</h1>
+          <p className="mt-1 mb-0 text-muted">
+            {inRoom - beingHelped} waiting · {beingHelped} being helped ·{" "}
+            {entries.filter((e) => e.status !== "resolved" && !e.due).length}{" "}
+            scheduled later ·{" "}
+            {entries.filter((e) => e.status === "resolved").length} done
+          </p>
+          {email && (
+            <p className="mt-1 mb-0 text-meta text-muted">
+              Signed in as {email}
+            </p>
+          )}
+        </div>
+        {/* Right of the title where there is room; on a phone the two rows
+          stack and a right edge to line up against no longer exists. */}
+        <div className="flex flex-wrap justify-end gap-2 narrow:justify-start">
+          {sheetUrl && (
+            <a
+              data-button
+              className="btn-secondary gap-2"
+              href={sheetUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalIcon />
+              Open spreadsheet
+            </a>
+          )}
+          {/* Up here so a record can be taken without opening Google Sheets —
+            and the only way to get one when Sheets is not configured. */}
+          <button
+            type="button"
+            className="btn-secondary inline-flex items-center gap-2"
+            onClick={onExport}
+          >
+            <DownloadIcon />
+            Download spreadsheet
+          </button>
+          {/* The same red-on-surface as Remove: not destructive to anyone
+            else's data, but it ends the session and should read that way. */}
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 border-border bg-surface text-danger"
+            onClick={onSignOut}
+          >
+            <SignOutIcon />
+            Sign out
+          </button>
+        </div>
       </div>
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -49,35 +98,16 @@ export default function AdminToolbar({
         >
           {showBooking ? "Close" : "Book someone in"}
         </button>
-        {sheetUrl && (
-          <a
-            data-button
+        {manageStaff && (
+          <button
+            type="button"
             className="btn-secondary"
-            href={sheetUrl}
-            target="_blank"
-            rel="noreferrer"
+            onClick={onToggleStaff}
+            aria-expanded={showStaff}
           >
-            Open spreadsheet
-          </a>
+            {showStaff ? "Close staff access" : "Staff access"}
+          </button>
         )}
-        {/* The same export the clear-all dialog offers, up here so a record
-          can be taken without opening Google Sheets — and the only way to
-          get one when Sheets is not configured. */}
-        <button type="button" className="btn-secondary" onClick={onExport}>
-          Download spreadsheet
-        </button>
-        <button type="button" className="btn-secondary" onClick={onSignOut}>
-          Sign out
-        </button>
-        {/* "Clear all" wipes the board; keep it off the elbow of "Sign out". */}
-        <button
-          type="button"
-          className="ml-2 border-border bg-surface text-danger"
-          onClick={onClearAll}
-          disabled={entries.length === 0}
-        >
-          Clear all
-        </button>
       </div>
     </header>
   );

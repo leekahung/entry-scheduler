@@ -216,11 +216,16 @@ export default function UserPage() {
             {/* Only staff can take someone out of the line; this just clears
                 this device so the next person can join on it. Deliberately
                 unconfirmed: on a shared tablet the next visitor is standing
-                there waiting, and nothing here is destructive. */}
+                there waiting, and nothing here is destructive. It opens the
+                form itself rather than resting on the start screen, which
+                would ask the same question over again. */}
             <button
               type="button"
               className="self-start bg-transparent p-0 text-accent underline"
-              onClick={forgetMyEntry}
+              onClick={() => {
+                forgetMyEntry();
+                setShowForm(true);
+              }}
             >
               Check someone else in
             </button>

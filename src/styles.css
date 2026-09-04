@@ -248,6 +248,35 @@
     cursor: pointer;
     /* Removes the double-tap-to-zoom delay on touch devices. */
     touch-action: manipulation;
+    transition:
+      filter 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  /* Hover feedback, and only where a real pointer can hover: on a touch
+     screen these states stick after a tap and read as though the control is
+     still doing something.
+
+     Dimming rather than naming a colour, because these controls set their own
+     backgrounds — accent, surface, danger — and one hover colour would have to
+     be written, and kept in step, for each of them. Tabs are left out: they
+     are not boxes, and shading one would put the box back. */
+  @media (hover: hover) {
+    button:not(:disabled, [role="tab"]):hover,
+    a[data-button]:hover {
+      filter: brightness(0.94);
+    }
+
+    button:not(:disabled, [role="tab"]):active,
+    a[data-button]:active {
+      filter: brightness(0.88);
+    }
+
+    /* Plain links are already accent-coloured; the underline is what says the
+       pointer is on them. */
+    a:not([data-button]):hover {
+      text-decoration: underline;
+    }
   }
 
   a[data-button] {

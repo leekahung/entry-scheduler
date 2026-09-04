@@ -47,9 +47,12 @@ export default function QueueFilters({
       <label className="sr-only" htmlFor="triage-filter">
         Triage level
       </label>
+      {/* A fixed width, not one that follows the selected option: the row is a
+        flex line, so a select that grew from "Urgent" to "Any triage level"
+        moved the search field and the checkbox beside it every time. */}
       <select
         id="triage-filter"
-        className="w-auto flex-[0_1_12rem]"
+        className="w-[12rem] max-w-full flex-none"
         value={triage}
         onChange={(event) => onTriage(event.target.value as Priority | "")}
       >
@@ -69,20 +72,25 @@ export default function QueueFilters({
         />
         Needs details ({incompleteCount})
       </label>
-      {filtering && (
+      {/* Its own line, and always there: a row that came and went with the
+        filters shortened the search field beside it and moved everything below
+        the card every time someone picked a triage level. The button keeps its
+        space when there is nothing to clear — `invisible` leaves it out of the
+        tab order and the accessibility tree, but not out of the layout. */}
+      <p className="m-0 flex flex-[1_1_100%] flex-wrap items-center gap-3 text-meta text-muted">
+        <span role="status">
+          {shown} of {total} shown
+        </span>
         <button
           type="button"
-          className="btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
+          className={`btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem] ${
+            filtering ? "" : "invisible"
+          }`}
           onClick={onClear}
         >
           Clear filters
         </button>
-      )}
-      {filtering && (
-        <p className="m-0 flex-[1_1_100%] text-meta text-muted" role="status">
-          {shown} of {total} shown
-        </p>
-      )}
+      </p>
     </div>
   );
 }
