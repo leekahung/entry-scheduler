@@ -118,12 +118,32 @@ export function createApp(
 
   if (staticDir) {
     const root = path.resolve(staticDir);
-    app.use(express.static(root));
+    app.use(
+      express.static(root, {
+        // Only what Vite fingerprints into assets/ may be held: those can
+        // never go stale, since a change ships under a new name. Everything
+        // else keeps its name across builds — index.html, and anything
+        // dropped into the build unhashed — so a year-long copy of one could
+        // not be replaced at all.
+        setHeaders: (res, file) => {
+          const fingerprinted = path
+            .relative(root, file)
+            .startsWith(`assets${path.sep}`);
+          res.setHeader(
+            "Cache-Control",
+            fingerprinted ? "public, max-age=31536000, immutable" : "no-cache",
+          );
+        },
+      }),
+    );
     app.use((req, res, next) => {
       if (req.method !== "GET") return next();
       // A path with a file extension is a missing asset, not a client-side
       // route: let it 404 rather than returning HTML the browser can't parse.
       if (path.extname(req.path)) return next();
+      // sendFile does not go through the static handler above, so the rule
+      // that index.html is never held has to be repeated here.
+      res.setHeader("Cache-Control", "no-cache");
       res.sendFile(path.join(root, "index.html"));
     });
   }

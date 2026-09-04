@@ -7,7 +7,7 @@ import {
   expect,
   it,
 } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
@@ -105,6 +105,11 @@ describe("serving the built frontend", () => {
       "<!doctype html><title>App</title>",
     );
     writeFileSync(path.join(staticDir, "app.js"), "console.log('bundle');");
+    mkdirSync(path.join(staticDir, "assets"));
+    writeFileSync(
+      path.join(staticDir, "assets", "index-abc123.js"),
+      "console.log('fingerprinted');",
+    );
     served = createApp(store, PASSCODE, staticDir);
   });
 
@@ -120,6 +125,29 @@ describe("serving the built frontend", () => {
     const res = await request(served).get("/app.js");
     expect(res.status).toBe(200);
     expect(res.text).toContain("bundle");
+  });
+
+  it("lets a fingerprinted asset be kept, so a reload does not refetch it", async () => {
+    const res = await request(served).get("/assets/index-abc123.js");
+    expect(res.headers["cache-control"]).toBe(
+      "public, max-age=31536000, immutable",
+    );
+  });
+
+  it("never holds a file that is not fingerprinted, whatever its type", async () => {
+    // Anything copied into the build unhashed keeps its name across builds —
+    // held for a year, it could never be replaced.
+    const res = await request(served).get("/app.js");
+    expect(res.headers["cache-control"]).toBe("no-cache");
+  });
+
+  it("never lets index.html be kept, since it names the current assets", async () => {
+    // Both the root and the deep links staff actually open: the fallback does
+    // not go through the static handler, so it needs the rule of its own.
+    for (const route of ["/", "/admin"]) {
+      const res = await request(served).get(route);
+      expect(res.headers["cache-control"]).toBe("no-cache");
+    }
   });
 
   it("falls back to index.html for client-side routes", async () => {
