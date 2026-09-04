@@ -493,7 +493,7 @@ Date,Client Name,DOB,Gender,Phone #,Case Type,Appointment Type,Appointment Outco
 
 Case Type, Appointment Type, Appointment Outcome, and Legal Outcome are the
 controlled vocabularies from that workbook's **CARE4 CODES** tab, mirrored in
-`server/codes.ts` — the one place to edit if the workbook changes, alongside
+`server/shared/codes.ts` — the one place to edit if the workbook changes, alongside
 the gender options. Notes holds the note typed when booking someone in and the
 admin note, in that order.
 
