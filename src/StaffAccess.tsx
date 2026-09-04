@@ -7,7 +7,9 @@ import {
   type StaffList,
   type StaffRole,
 } from "./api";
+import ConfirmDialog from "./ConfirmDialog";
 import { duplicateReason } from "./staffList";
+import { useAsyncAction } from "./useAsyncAction";
 
 /**
  * Lets an owner grant and revoke console access.
@@ -18,8 +20,19 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
   const [list, setList] = useState<StaffList | null>(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<StaffRole>("staff");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const {
+    pending: busy,
+    error,
+    setError,
+    run: attempt,
+  } = useAsyncAction("That did not work.");
+  // Taking someone's access away locks them out mid-shift and cannot be
+  // undone from here — they have to be added again — so it is asked about
+  // first, the same as removing someone from the queue.
+  const [confirming, setConfirming] = useState<{
+    email: string;
+    role: StaffRole | "row";
+  } | null>(null);
 
   const load = () =>
     fetchStaff(passcode)
@@ -32,17 +45,13 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
     void load();
   }, []);
 
-  const run = async (action: () => Promise<unknown>) => {
-    setBusy(true);
-    setError("");
-    try {
+  // The list is reloaded inside the attempt, so a write that lands but leaves
+  // the panel unable to re-read it still reports the failure.
+  const run = (action: () => Promise<unknown>) =>
+    attempt(async () => {
       await action();
       await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "That did not work.");
-    }
-    setBusy(false);
-  };
+    });
 
   if (!list) {
     return (
@@ -111,9 +120,19 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
             <option value="owner">Owner — can also change this list</option>
           </select>
         </div>
-        <button type="submit" disabled={busy || !email.trim()}>
-          Add
-        </button>
+        {/* A box the height of the controls beside it, so the shorter button
+          is centred on the input and the select rather than sitting on their
+          bottom edge. The two heights are the ones the base stylesheet gives
+          every field, coarse pointers included. */}
+        <div className="flex h-11 items-center pointer-coarse:h-12">
+          <button
+            type="submit"
+            className="pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
+            disabled={busy || !email.trim()}
+          >
+            Add
+          </button>
+        </div>
       </form>
 
       {error && <p className="m-0 text-meta text-danger">{error}</p>}
@@ -132,9 +151,9 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
             {list.redundantRows.includes(owner) && (
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
                 disabled={busy}
-                onClick={() => void run(() => removeStaff(passcode, owner))}
+                onClick={() => setConfirming({ email: owner, role: "row" })}
               >
                 Clear row
               </button>
@@ -150,10 +169,10 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
             </span>
             <button
               type="button"
-              className="btn-secondary"
+              className="btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
               disabled={busy || member.email === list.you?.email}
               onClick={() =>
-                void run(() => removeStaff(passcode, member.email))
+                setConfirming({ email: member.email, role: member.role })
               }
             >
               Remove
@@ -164,6 +183,29 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
           <li className="text-muted">Nobody else has been given access yet.</li>
         )}
       </ul>
+
+      <ConfirmDialog
+        open={confirming !== null}
+        title={
+          confirming?.role === "row"
+            ? "Clear this leftover row?"
+            : `Remove ${confirming?.email}?`
+        }
+        body={
+          confirming?.role === "row"
+            ? `${confirming.email} is an owner from the server settings and stays one. Only the leftover row in the sheet is cleared.`
+            : `${confirming?.email} loses access to the console within about 30 seconds, including mid-shift. Adding them again is the only way back.`
+        }
+        confirmLabel={
+          confirming?.role === "row" ? "Clear row" : "Remove access"
+        }
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => {
+          const target = confirming?.email;
+          setConfirming(null);
+          if (target) void run(() => removeStaff(passcode, target));
+        }}
+      />
     </section>
   );
 }
