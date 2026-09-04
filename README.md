@@ -345,7 +345,13 @@ Two consequences worth knowing:
 - **The board is rewritten in full on every change.** A column added by hand
   is overwritten; the month tabs are where finished work is kept.
 - Reads are cached for five seconds. An edit made directly in Google Sheets
-  shows up in the console within that, not instantly.
+  shows up in the console within that, not instantly. Polls that arrive while
+  a read is already on its way share it rather than each starting one, so a
+  full waiting room costs the same quota as a single screen.
+- A request Google refuses because it is busy — a rate limit, or a backend
+  error — is retried a few times, waiting longer each time. Only the failures
+  that will not clear on their own, such as a spreadsheet that was never
+  shared, are reported straight away.
 
 Setting it up:
 
@@ -419,14 +425,21 @@ account able to edit.
 
 The board is the working queue, not the archive. Each month it spans is kept
 in its own tab named for it — "September 2026". The live log stays the first
-tab of the spreadsheet; a month is filed into a tab directly after it, so the
-newest month sits next to the log and older ones shift further right.
+tab of the spreadsheet; a month closing on its own is filed into a tab directly
+after it, so the newest month sits next to the log and older ones shift further
+right. Several months filed in one go — a first sync of a board that spans a
+year — are written side by side and land after the log in no particular order
+among themselves.
 
 Two things write those tabs:
 
 - **By itself.** On the first change of a new month the whole board is copied
   into its month tabs, and the finished entries from months that have ended
-  come off the board. Nobody has to remember to close a month out.
+  come off the board. Nobody has to remember to close a month out. The filing
+  runs behind the change rather than in front of it, so the check-in that
+  happens to be the month's first is answered at once and does not wait on a
+  read and a write for every month the board spans. It shows up on the board a
+  moment later.
 - **Sync List**, beside the queue tabs, does the copying early. It
   takes nothing off the board — whatever month it is — and never makes a second
   tab for a month it has already written. It also writes the board back to its
@@ -528,6 +541,8 @@ formulas.
   per person: change `ADMIN_PASSCODE` and restart, which locks out everyone.
 - "Helped by" is the signed-in identity where Google sign-in is on, and a name
   typed on the device where it is not.
-- Both screens poll every 5 seconds rather than using websockets.
+- Both screens poll every 5 seconds rather than using websockets, and only
+  while the tab is on screen — a phone left in a pocket stops polling and picks
+  up again the moment it is looked at.
 - Serve over HTTPS before using this anywhere beyond a trusted local network —
   the passcode is sent as a plain header.
