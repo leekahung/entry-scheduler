@@ -86,21 +86,53 @@ async function accessToken(config: SheetsConfig): Promise<string> {
   return token;
 }
 
+/**
+ * What Google says when it is busy rather than unhappy: the per-minute quota,
+ * and the backend wobbles that clear on their own.
+ */
+const TRANSIENT = new Set([429, 500, 502, 503, 504]);
+/** Retries after the first try, and the delay the first of them waits. */
+export const RETRIES = 3;
+const BACKOFF_MS = 250;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function call(
   config: SheetsConfig,
   token: string,
   path: string,
   init: { method: string; body?: unknown },
 ): Promise<Response> {
-  const res = await fetch(`${API}/${path}`, {
-    method: init.method,
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json",
-    },
-    body: init.body ? JSON.stringify(init.body) : undefined,
-  });
-  if (!res.ok) {
+  // The spreadsheet is the only copy of the queue, so a rate limit or a
+  // dropped connection must not become a visitor who could not check in.
+  // Every request here is safe to repeat: a read, or a write of the whole tab.
+  for (let attempt = 0; ; attempt++) {
+    const retriable = attempt < RETRIES;
+    let res: Response;
+    try {
+      res = await fetch(`${API}/${path}`, {
+        method: init.method,
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: init.body ? JSON.stringify(init.body) : undefined,
+      });
+    } catch (error) {
+      // Never reached Google at all — as transient as a 503, and as safe.
+      if (!retriable) throw error;
+      await backOff(attempt);
+      continue;
+    }
+    if (res.ok) return res;
+    if (retriable && TRANSIENT.has(res.status)) {
+      // The body holds the socket until something reads it, and a burst of
+      // rate limits is exactly when connections must not be left behind.
+      await res.body?.cancel().catch(() => {});
+      await backOff(attempt);
+      continue;
+    }
+
     const detail = await res.text();
     // 403 here almost always means the sheet was never shared with the
     // service account, which reads like an auth failure but is not.
@@ -110,7 +142,15 @@ async function call(
         : `Google Sheets error ${res.status}: ${detail.slice(0, 200)}`,
     );
   }
-  return res;
+}
+
+/**
+ * Waits longer after each failure, and by a random amount: a whole waiting
+ * room's polls fail together, and coming back together is what keeps a rate
+ * limit tripped.
+ */
+function backOff(attempt: number): Promise<unknown> {
+  return sleep(BACKOFF_MS * 2 ** attempt * (1 + Math.random()));
 }
 
 /**

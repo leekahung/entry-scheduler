@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { googleTransport, sheetsConfig } from "./sheets.js";
+import { googleTransport, RETRIES, sheetsConfig } from "./sheets.js";
 
 const COMPLETE = {
   GOOGLE_SHEETS_ID: "sheet-123",
@@ -174,5 +174,119 @@ describe("googleTransport", () => {
     await expect(googleTransport(config, token).read()).rejects.toThrow(
       /Share the spreadsheet/,
     );
+  });
+
+  describe("when Google is busy rather than unhappy", () => {
+    /** Fails `failures` times with `status`, then answers normally. */
+    function flaky(status: number, failures: number) {
+      let calls = 0;
+      vi.stubGlobal("fetch", () => {
+        calls += 1;
+        return Promise.resolve(
+          calls <= failures
+            ? new Response("rate limit exceeded", { status })
+            : ok({ values: [["ID"], [1]] }),
+        );
+      });
+      return () => calls;
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("comes back after a rate limit rather than failing the check-in", async () => {
+      vi.useFakeTimers();
+      const calls = flaky(429, 2);
+
+      const read = googleTransport(config, token).read();
+      await vi.runAllTimersAsync();
+
+      await expect(read).resolves.toEqual([["ID"], [1]]);
+      expect(calls()).toBe(3);
+    });
+
+    it("retries a write too, which is safe because it rewrites the whole tab", async () => {
+      vi.useFakeTimers();
+      const calls = flaky(503, 1);
+
+      const write = googleTransport(config, token).write([["ID"], [1]]);
+      await vi.runAllTimersAsync();
+
+      await expect(write).resolves.toBeUndefined();
+      expect(calls()).toBe(2);
+    });
+
+    it("waits longer after each failure, so a retry cannot keep a limit tripped", async () => {
+      vi.useFakeTimers();
+      const waits: number[] = [];
+      const slept = vi.spyOn(globalThis, "setTimeout");
+      flaky(429, RETRIES);
+
+      const read = googleTransport(config, token).read();
+      await vi.runAllTimersAsync();
+      await read;
+
+      for (const [, ms] of slept.mock.calls) waits.push(Number(ms));
+      expect(waits).toHaveLength(RETRIES);
+      expect(waits[1]).toBeGreaterThan(waits[0]);
+      expect(waits[2]).toBeGreaterThan(waits[1]);
+      slept.mockRestore();
+    });
+
+    it("comes back after a dropped connection, not just a refusal", async () => {
+      vi.useFakeTimers();
+      let calls = 0;
+      vi.stubGlobal("fetch", () => {
+        calls += 1;
+        return calls === 1
+          ? Promise.reject(new TypeError("fetch failed"))
+          : Promise.resolve(ok({ values: [["ID"], [1]] }));
+      });
+
+      const read = googleTransport(config, token).read();
+      await vi.runAllTimersAsync();
+
+      await expect(read).resolves.toEqual([["ID"], [1]]);
+      expect(calls).toBe(2);
+    });
+
+    it("gives up on a connection that never comes back", async () => {
+      vi.useFakeTimers();
+      let calls = 0;
+      vi.stubGlobal("fetch", () => {
+        calls += 1;
+        return Promise.reject(new TypeError("fetch failed"));
+      });
+
+      const read = expect(
+        googleTransport(config, token).read(),
+      ).rejects.toThrow(/fetch failed/);
+      await vi.runAllTimersAsync();
+      await read;
+
+      expect(calls).toBe(RETRIES + 1);
+    });
+
+    it("gives up once the retries are spent", async () => {
+      vi.useFakeTimers();
+      const calls = flaky(503, Number.POSITIVE_INFINITY);
+
+      const read = expect(
+        googleTransport(config, token).read(),
+      ).rejects.toThrow(/Google Sheets error 503/);
+      await vi.runAllTimersAsync();
+      await read;
+
+      expect(calls()).toBe(RETRIES + 1);
+    });
+
+    it("does not retry a sheet that was never shared, which will not clear", async () => {
+      const calls = flaky(403, Number.POSITIVE_INFINITY);
+      await expect(googleTransport(config, token).read()).rejects.toThrow(
+        /Share the spreadsheet/,
+      );
+      expect(calls()).toBe(1);
+    });
   });
 });
