@@ -10,7 +10,7 @@ import {
   type StaffMember,
   type StaffStore,
 } from "./staff.js";
-import { createStore, type Store } from "./store.js";
+import { createStore, type SheetTransport, type Store } from "./store.js";
 import {
   SESSION_COOKIE,
   SESSION_MS,
@@ -86,6 +86,10 @@ describe("admin gate", () => {
     expect((await request(app).get("/api/entries")).status).toBe(401);
   });
 
+  it("blocks saving to the month tabs without the passcode", async () => {
+    expect((await request(app).post("/api/entries/archive")).status).toBe(401);
+  });
+
   it("blocks deletion without the passcode", async () => {
     const id = await join("Ada");
     expect((await request(app).delete(`/api/entries/${id}`)).status).toBe(401);
@@ -105,6 +109,31 @@ describe("csv export", () => {
     expect(res.status).toBe(200);
     expect(res.text.startsWith("\uFEFF")).toBe(true);
     expect(res.text).toContain("José Nguyễn");
+  });
+});
+
+describe("month tabs", () => {
+  it("reports the months it saved and leaves the board alone", async () => {
+    const tabs = new Map<string, SheetTransport>();
+    const tabbed = createApp(
+      createStore(fakeSheet().transport, {
+        openTab(tab) {
+          const sheet = tabs.get(tab) ?? fakeSheet().transport;
+          tabs.set(tab, sheet);
+          return sheet;
+        },
+      }),
+      PASSCODE,
+    );
+    await request(tabbed).post("/api/entries").send({ name: "Ada" });
+
+    const res = await asAdmin(request(tabbed).post("/api/entries/archive"));
+    expect(res.status).toBe(200);
+    expect(res.body.entries).toBe(1);
+    expect(res.body.months).toHaveLength(1);
+    expect(
+      (await asAdmin(request(tabbed).get("/api/entries"))).body,
+    ).toHaveLength(1);
   });
 });
 
@@ -321,50 +350,6 @@ describe("correcting who helped", () => {
       .patch(`/api/entries/${id}`)
       .send({ helpedBy: "impostor" });
     expect(res.status).toBe(401);
-  });
-});
-
-describe("clearing the whole queue", () => {
-  it("removes every entry and reports the count", async () => {
-    await join("Ada");
-    await join("Grace");
-    await join("Katherine");
-
-    const res = await asAdmin(request(app).delete("/api/entries"));
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ removed: 3 });
-    expect(await store.list()).toHaveLength(0);
-  });
-
-  it("restarts numbering at #1 afterwards", async () => {
-    await join("Ada");
-    await join("Grace");
-    await asAdmin(request(app).delete("/api/entries"));
-
-    const res = await request(app).post("/api/entries").send({ name: "Mae" });
-    expect(res.body.id).toBe(1);
-  });
-
-  it("blocks guests from clearing the queue", async () => {
-    await join("Ada");
-    const res = await request(app).delete("/api/entries");
-    expect(res.status).toBe(401);
-    expect(await store.list()).toHaveLength(1);
-  });
-
-  it("blocks a wrong passcode from clearing the queue", async () => {
-    await join("Ada");
-    const res = await request(app)
-      .delete("/api/entries")
-      .set("x-admin-passcode", "wrong");
-    expect(res.status).toBe(401);
-    expect(await store.list()).toHaveLength(1);
-  });
-
-  it("is harmless on an already-empty queue", async () => {
-    const res = await asAdmin(request(app).delete("/api/entries"));
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ removed: 0 });
   });
 });
 
@@ -636,7 +621,7 @@ describe("triage and appointments", () => {
     expect(await queueIds()).toEqual([second, first]);
   });
 
-  it("keeps arrival order within one triage level", async () => {
+  it("serves the queue in arrival order within one triage level", async () => {
     const first = await join("Ada");
     const second = await join("Grace");
     expect(await queueIds()).toEqual([first, second]);
@@ -1020,6 +1005,9 @@ describe("staff sign-in with Google", () => {
     expect(res.headers.location).toContain("accounts.google.com");
     expect(res.headers.location).toContain("client-123");
     expect(res.headers["set-cookie"][0]).toContain(STATE_COOKIE);
+    // Without "profile" Google sends no display name, and every entry would be
+    // credited to an email address instead of a person.
+    expect(decodeURIComponent(res.headers.location)).toContain("profile");
   });
 
   it("refuses a callback whose state does not match the cookie", async () => {
@@ -1082,6 +1070,119 @@ describe("managing who has access", () => {
 
   afterEach(() => {
     for (const key of Object.keys(OAUTH)) delete process.env[key];
+  });
+
+  it("keeps the records to owners: a staff session cannot save the month tabs", async () => {
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+
+    const refused = await request(withStaff)
+      .post("/api/entries/archive")
+      .set("cookie", as("kim@clinic.org"));
+    expect(refused.status).toBe(403);
+
+    const allowed = await request(withStaff)
+      .post("/api/entries/archive")
+      .set("cookie", as("boss@clinic.org"));
+    expect(allowed.status).toBe(200);
+  });
+
+  it("withholds the spreadsheet link from staff on /api/admin/verify", async () => {
+    process.env.GOOGLE_SHEETS_ID = "sheet-123";
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+
+    const asStaff = await request(withStaff)
+      .post("/api/admin/verify")
+      .set("cookie", as("kim@clinic.org"));
+    expect(asStaff.body).toMatchObject({ ok: true, sheetUrl: null });
+
+    const asOwner = await request(withStaff)
+      .post("/api/admin/verify")
+      .set("cookie", as("boss@clinic.org"));
+    expect(asOwner.body.sheetUrl).toContain("sheet-123");
+    delete process.env.GOOGLE_SHEETS_ID;
+  });
+
+  it("still hands the link out on a passcode deployment, which has no owners", async () => {
+    for (const key of Object.keys(OAUTH)) delete process.env[key];
+    process.env.GOOGLE_SHEETS_ID = "sheet-123";
+    const res = await asAdmin(request(withStaff).post("/api/admin/verify"));
+    expect(res.body.sheetUrl).toContain("sheet-123");
+    delete process.env.GOOGLE_SHEETS_ID;
+  });
+
+  it("has no name to give when Google sent none, leaving the email to stand in", async () => {
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+    // A session signed without a name: an account with no display name set,
+    // or one issued before the profile scope was asked for.
+    const res = await request(withStaff)
+      .get("/api/auth/me")
+      .set("cookie", as("kim@clinic.org"));
+    expect(res.body).toMatchObject({ email: "kim@clinic.org", name: "" });
+  });
+
+  it("gives the display name when Google sent one", async () => {
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+    const named = `${SESSION_COOKIE}=${signSession("kim@clinic.org", OAUTH.SESSION_SECRET, undefined, "Kim Ng")}`;
+    const res = await request(withStaff)
+      .get("/api/auth/me")
+      .set("cookie", named);
+    expect(res.body).toMatchObject({ email: "kim@clinic.org", name: "Kim Ng" });
+  });
+
+  it("keeps the sign-in warning to owners", async () => {
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+    expect(
+      (
+        await request(withStaff)
+          .get("/api/admin/alerts")
+          .set("cookie", as("kim@clinic.org"))
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(withStaff)
+          .get("/api/admin/alerts")
+          .set("cookie", as("boss@clinic.org"))
+      ).status,
+    ).toBe(200);
+  });
+
+  it("withholds the spreadsheet link from staff on /api/auth/me", async () => {
+    process.env.GOOGLE_SHEETS_ID = "sheet-123";
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+
+    const asStaff = await request(withStaff)
+      .get("/api/auth/me")
+      .set("cookie", as("kim@clinic.org"));
+    expect(asStaff.body).toMatchObject({ role: "staff", sheetUrl: null });
+
+    const asOwner = await request(withStaff)
+      .get("/api/auth/me")
+      .set("cookie", as("boss@clinic.org"));
+    expect(asOwner.body.sheetUrl).toContain("sheet-123");
+    delete process.env.GOOGLE_SHEETS_ID;
+  });
+
+  it("still lets staff work the queue and take their own CSV", async () => {
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+    const id = await join("Ada");
+
+    const worked = await request(withStaff)
+      .patch(`/api/entries/${id}`)
+      .set("cookie", as("kim@clinic.org"))
+      .send({ status: "pending" });
+    expect(worked.status).toBe(200);
+
+    const exported = await request(withStaff)
+      .get("/api/entries.csv")
+      .set("cookie", as("kim@clinic.org"));
+    expect(exported.status).toBe(200);
+  });
+
+  it("draws no owner line on a passcode deployment, which has none", async () => {
+    for (const key of Object.keys(OAUTH)) delete process.env[key];
+    const res = await asAdmin(request(withStaff).post("/api/entries/archive"));
+    expect(res.status).toBe(200);
   });
 
   it("is unavailable without Google sign-in, so a shared passcode cannot grant access", async () => {

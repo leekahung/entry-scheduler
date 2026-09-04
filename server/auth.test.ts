@@ -7,6 +7,7 @@ import {
   readCookie,
   readSession,
   SESSION_MS,
+  sessionName,
   signSession,
 } from "./auth.js";
 
@@ -110,5 +111,27 @@ describe("cookies", () => {
     expect(
       cookie("admin_session", "v", { maxAge: 1000, secure: false }),
     ).not.toContain("Secure");
+  });
+});
+
+describe("the name a session carries", () => {
+  const SECRET = "a-long-signing-secret";
+
+  it("hands back the name it was signed with", () => {
+    const token = signSession("kim@clinic.org", SECRET, undefined, "Kim Ng");
+    expect(sessionName(token, SECRET)).toBe("Kim Ng");
+    expect(readSession(token, SECRET)).toBe("kim@clinic.org");
+  });
+
+  it("reads a session signed before names were carried", () => {
+    const token = signSession("kim@clinic.org", SECRET);
+    expect(sessionName(token, SECRET)).toBe("");
+    expect(readSession(token, SECRET)).toBe("kim@clinic.org");
+  });
+
+  it("gives nothing for a forged or expired token", () => {
+    const token = signSession("kim@clinic.org", SECRET, undefined, "Kim Ng");
+    expect(sessionName(token, "not-the-secret")).toBe("");
+    expect(sessionName(token, SECRET, Date.now() + SESSION_MS + 1)).toBe("");
   });
 });

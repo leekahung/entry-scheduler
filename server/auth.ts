@@ -60,13 +60,20 @@ function sign(value: string, secret: string): string {
   return createHmac("sha256", secret).update(value).digest("base64url");
 }
 
-/** A signed `payload.signature` token; the payload is readable, not secret. */
+/**
+ * A signed `payload.signature` token; the payload is readable, not secret.
+ * The name is carried only so the console can say who is helping; nothing is
+ * decided by it, and a token written before it existed still reads.
+ */
 export function signSession(
   email: string,
   secret: string,
   now = Date.now(),
+  name = "",
 ): string {
-  const payload = b64(JSON.stringify({ email, exp: now + SESSION_MS }));
+  const payload = b64(
+    JSON.stringify({ email, exp: now + SESSION_MS, ...(name ? { name } : {}) }),
+  );
   return `${payload}.${sign(payload, secret)}`;
 }
 
@@ -97,6 +104,24 @@ export function readSession(
     return exp > now ? email : null;
   } catch {
     return null;
+  }
+}
+
+/** The display name a valid session carries, or "" when it holds none. */
+export function sessionName(
+  token: string | undefined,
+  secret: string,
+  now = Date.now(),
+): string {
+  if (!readSession(token, secret, now)) return "";
+  try {
+    const [payload] = String(token).split(".");
+    const { name } = JSON.parse(
+      Buffer.from(String(payload), "base64url").toString(),
+    ) as { name?: unknown };
+    return typeof name === "string" ? name : "";
+  } catch {
+    return "";
   }
 }
 
