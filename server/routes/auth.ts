@@ -10,9 +10,9 @@ import {
   SESSION_MS,
   signSession,
   STATE_COOKIE,
-} from "../auth.js";
-import { wrap, type Req } from "../http.js";
-import { sheetUrl, sheetsConfig } from "../sheets.js";
+} from "../lib/auth.js";
+import { wrap, type Req } from "../lib/http.js";
+import { sheetUrl, sheetsConfig } from "../sheet/sheets.js";
 import type { RouteContext } from "./context.js";
 
 const oauthClient = (req: Req) => {

@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { queueOrder } from "../entry.js";
-import { wrap } from "../http.js";
-import { publicView } from "../publicEntry.js";
-import { checkNewEntry } from "../validate.js";
+import { queueOrder } from "../domain/entry.js";
+import { wrap } from "../lib/http.js";
+import { publicView } from "../domain/publicEntry.js";
+import { checkNewEntry } from "../domain/validate.js";
 import type { RouteContext } from "./context.js";
 
 /** Public: anyone can join the queue and see who is waiting. */

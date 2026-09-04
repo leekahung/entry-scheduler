@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { fakeSheet } from "./sheet.fixture.js";
+import { fakeSheet } from "../sheet/sheet.fixture.js";
 import {
   createStaffStore,
   fromStaffValues,
-  isEmailish,
   STAFF_CACHE_MS,
   toStaffValues,
   type StaffMember,
 } from "./staff.js";
+import { isEmailish } from "../shared/email.js";
 
 const member = (over: Partial<StaffMember> = {}): StaffMember => ({
   email: "kim@clinic.org",

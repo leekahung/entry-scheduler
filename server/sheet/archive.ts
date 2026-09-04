@@ -1,4 +1,4 @@
-import type { Entry } from "./entry.js";
+import type { Entry } from "../domain/entry.js";
 
 const MONTH_NAMES = [
   "January",

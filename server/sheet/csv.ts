@@ -1,10 +1,10 @@
-import type { Entry } from "./entry.js";
+import type { Entry } from "../domain/entry.js";
 import { toStamp } from "./stamp.js";
 
 /**
  * The SIGN IN LOG SPREADSHEET header row, in its own order.
  * The spreadsheet carries these columns first, then the machine fields in
- * `server/store.ts`, so the human log and the CSV can never drift.
+ * `server/sheet/columns.ts`, so the human log and the CSV can never drift.
  */
 export const LOG_COLUMNS: readonly [
   string,

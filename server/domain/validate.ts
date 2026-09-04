@@ -7,7 +7,7 @@ import {
   isTimeSpent,
   LEGAL_OUTCOMES,
   TIME_MAX,
-} from "./codes.js";
+} from "../shared/codes.js";
 import {
   DEFAULT_PRIORITY,
   isPriority,
@@ -16,11 +16,12 @@ import {
   type EntryUpdate,
   type Intake,
 } from "./entry.js";
-
-export const MAX_NAME = 80;
-export const MAX_NOTE = 280;
-export const MAX_ADMIN_NOTE = 500;
-export const MAX_PHONE = 30;
+import {
+  MAX_ADMIN_NOTE,
+  MAX_NAME,
+  MAX_NOTE,
+  MAX_PHONE,
+} from "../shared/limits.js";
 
 /**
  * A parsed value, or the message to send back as a 400.
@@ -36,6 +37,12 @@ const bad = (error: string): Checked<never> => ({ ok: false, error });
 const trimmed = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
 
+/** Today where the host is, as the calendar date an <input type="date"> submits. */
+function localDay(at: Date): string {
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
 /** Blank, or the ISO calendar date an <input type="date"> submits. */
 export function isDob(value: string): boolean {
   if (value === "") return true;
@@ -43,7 +50,10 @@ export function isDob(value: string): boolean {
   const date = new Date(`${value}T00:00:00Z`);
   // Round-tripping rejects real-looking impossibilities like 2026-02-31.
   if (date.toISOString().slice(0, 10) !== value) return false;
-  return date.getTime() <= Date.now();
+  // Compared as local calendar days, not instants: after 5pm in Los Angeles
+  // UTC has already rolled over, and comparing timestamps would accept
+  // tomorrow's date as a date of birth for the rest of the evening.
+  return value <= localDay(new Date());
 }
 
 /**
@@ -60,7 +70,11 @@ export function isDob(value: string): boolean {
 export function normalizeScheduledFor(value: string): string | undefined {
   if (value === "") return "";
   if (!/\d{4}/.test(value)) return undefined;
-  const at = new Date(value);
+  // A bare date is UTC midnight to `Date`, which lands on the evening before
+  // anywhere west of Greenwich — a booking for the 4th read back as the 3rd.
+  const at = new Date(
+    /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00` : value,
+  );
   return Number.isNaN(at.getTime()) ? undefined : at.toISOString();
 }
 

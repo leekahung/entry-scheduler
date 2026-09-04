@@ -6,9 +6,10 @@ import {
   monthKey,
   monthTab,
 } from "./archive.js";
-import { makeEntry } from "./entry.fixture.js";
+import { makeEntry } from "../domain/entry.fixture.js";
 import { fakeSheet } from "./sheet.fixture.js";
-import { createStore, fromSheetValues, type SheetTransport } from "./store.js";
+import { fromSheetValues } from "./columns.js";
+import { createStore, type SheetTransport } from "./store.js";
 
 /** The month tabs a store writes to, each an in-memory sheet of its own. */
 function fakeTabs() {

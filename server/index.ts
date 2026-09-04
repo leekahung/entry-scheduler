@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { createApp } from "./app.js";
-import { authConfig } from "./auth.js";
-import { googleTransport, sheetsConfig } from "./sheets.js";
-import { createStore } from "./store.js";
-import { createStaffStore } from "./staff.js";
+import { authConfig } from "./lib/auth.js";
+import { googleTransport, sheetsConfig } from "./sheet/sheets.js";
+import { createStore } from "./sheet/store.js";
+import { createStaffStore } from "./domain/staff.js";
 
 // `||`, not `??`: a blank PORT= in a .env file is an empty string, which
 // Number() turns into 0 and binds a random port.

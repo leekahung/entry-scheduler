@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
-import type { Req } from "../http.js";
-import type { Role, StaffStore } from "../staff.js";
-import type { Store } from "../store.js";
+import type { Req } from "../lib/http.js";
+import type { Role, StaffStore } from "../domain/staff.js";
+import type { Store } from "../sheet/store.js";
 
 /** Who a request is, once the session and the staff list agree on it. */
 export type Who = { email: string; role: Role };

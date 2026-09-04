@@ -4,7 +4,7 @@ import type {
   CaseType,
   Gender,
   LegalOutcome,
-} from "./codes.js";
+} from "../shared/codes.js";
 
 export const STATUSES = ["new", "pending", "resolved"] as const;
 export type Status = (typeof STATUSES)[number];

@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { authConfig, isBootstrapOwner } from "../auth.js";
-import { wrap } from "../http.js";
-import { isEmailish, isRole, normalizeEmail } from "../staff.js";
+import { authConfig, isBootstrapOwner } from "../lib/auth.js";
+import { wrap } from "../lib/http.js";
+import { isRole } from "../domain/staff.js";
+import { isEmailish, normalizeEmail } from "../shared/email.js";
 import type { RouteContext } from "./context.js";
 
 /** Managing who may use the console. Owners only, Google only. */

@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { ALERT_WINDOW_MS } from "../alerts.js";
-import { authConfig } from "../auth.js";
-import { wrap } from "../http.js";
-import { sheetUrl, sheetsConfig } from "../sheets.js";
+import { ALERT_WINDOW_MS } from "../lib/alerts.js";
+import { authConfig } from "../lib/auth.js";
+import { wrap } from "../lib/http.js";
+import { sheetUrl, sheetsConfig } from "../sheet/sheets.js";
 import type { RouteContext } from "./context.js";
 
 /** What the console asks about itself: where the records are, and who is probing. */

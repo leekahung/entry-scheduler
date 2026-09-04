@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toCsv, toRows } from "./csv.js";
-import { makeEntry as entry } from "./entry.fixture.js";
+import { makeEntry as entry } from "../domain/entry.fixture.js";
 
 const HEADER =
   "Date,Client Name,DOB,Gender,Phone #,Case Type,Appointment Type," +

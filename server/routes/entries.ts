@@ -1,8 +1,12 @@
 import { Router } from "express";
-import { toCsv } from "../csv.js";
-import { isDue, queueOrder } from "../entry.js";
-import { wrap } from "../http.js";
-import { checkBooking, checkNewEntry, checkUpdate } from "../validate.js";
+import { toCsv } from "../sheet/csv.js";
+import { isDue, queueOrder } from "../domain/entry.js";
+import { wrap } from "../lib/http.js";
+import {
+  checkBooking,
+  checkNewEntry,
+  checkUpdate,
+} from "../domain/validate.js";
 import type { RouteContext } from "./context.js";
 
 /** Admin only: the full records, status changes, deletion, and the exports. */
