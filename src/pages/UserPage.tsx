@@ -5,6 +5,7 @@ import CheckInForm from "../kiosk/CheckInForm";
 import QueueBoard from "../kiosk/QueueBoard";
 import WaitingList from "../kiosk/WaitingList";
 import { formatAppointment } from "../shared/time";
+import { usePoll } from "../hooks/usePoll";
 
 const POLL_MS = 5000;
 
@@ -37,25 +38,17 @@ export default function UserPage() {
     () => localStorage.getItem("entryName") ?? "",
   );
 
-  useEffect(() => {
-    let active = true;
-    const load = () =>
-      fetchQueue()
-        .then((entries) => {
-          if (!active) return;
-          setQueue(entries);
-          setOffline(false);
-          setLoaded(true);
-        })
-        .catch(() => active && setOffline(true));
-
-    load();
-    const timer = setInterval(load, POLL_MS);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
+  const loadQueue = useCallback(() => {
+    fetchQueue()
+      .then((entries) => {
+        setQueue(entries);
+        setOffline(false);
+        setLoaded(true);
+      })
+      .catch(() => setOffline(true));
   }, []);
+
+  usePoll(loadQueue, POLL_MS);
 
   async function handleSubmit(name: string, intake: VisitorIntake) {
     setError("");

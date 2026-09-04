@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { usePoll } from "./usePoll";
 import type {
   AdminEntry,
   CaseDetails,
@@ -83,21 +84,18 @@ export function useEntries(passcode: string, unlocked: boolean) {
     }
   }, [passcode]);
 
+  // Locked again: forget the queue, so the next sign-in starts from nothing
+  // rather than showing the last session's board while the first poll lands.
   useEffect(() => {
-    if (!unlocked) {
-      setEntries([]);
-      setAlerts(null);
-      setLoaded(false);
-      setOffline(false);
-      setRejected(null);
-      return;
-    }
-    if (rejected) return;
+    if (unlocked) return;
+    setEntries([]);
+    setAlerts(null);
+    setLoaded(false);
+    setOffline(false);
+    setRejected(null);
+  }, [unlocked]);
 
-    refresh();
-    const timer = setInterval(refresh, POLL_MS);
-    return () => clearInterval(timer);
-  }, [unlocked, refresh, rejected]);
+  usePoll(refresh, POLL_MS, unlocked && !rejected);
 
   /** Runs a mutation, surfacing its failure without disturbing the poll. */
   const run = useCallback(
