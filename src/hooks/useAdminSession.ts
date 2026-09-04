@@ -4,7 +4,7 @@ import {
   fetchSignedInEmail,
   signOutOfGoogle,
   verifyPasscode,
-} from "./api";
+} from "../shared/api";
 
 const LOCKED_OUT =
   "Too many failed attempts from this device. It is locked for 15 minutes — ask an admin who is already signed in, or wait it out.";

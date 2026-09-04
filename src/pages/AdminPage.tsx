@@ -1,30 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  downloadCsv,
-  type AdminEntry,
-  type Priority,
-  type Status,
-} from "./api";
-import AdminBanners from "./AdminBanners";
-import AdminSignIn from "./AdminSignIn";
-import AdminToolbar from "./AdminToolbar";
-import BookingForm from "./BookingForm";
-import ConfirmDialog from "./ConfirmDialog";
-import HelpingAs from "./HelpingAs";
-import { RefreshIcon } from "./icons";
-import QueueFilters from "./QueueFilters";
-import { queueSections } from "./queueSections";
-import QueueTabs, { panelId, tabId } from "./QueueTabs";
-import RemoveEntryDialog from "./RemoveEntryDialog";
-import QueueTable from "./QueueTable";
-import StaffAccess from "./StaffAccess";
-import { unclosedMonth } from "./time";
-import { useEntryEditor } from "./useEntryEditor";
-import { useHelpedBy } from "./useHelpedBy";
-import { useQueueFilters } from "./useQueueFilters";
-import type { EntryChanges } from "./useEntries";
-import { useAdminSession } from "./useAdminSession";
-import { useEntries } from "./useEntries";
+import type { AdminEntry, Priority, Status } from "../shared/types";
+import { downloadCsv } from "../shared/api";
+import AdminBanners from "../admin/AdminBanners";
+import AdminSignIn from "../admin/AdminSignIn";
+import AdminToolbar from "../admin/AdminToolbar";
+import BookingForm from "../admin/BookingForm";
+import ConfirmDialog from "../admin/ConfirmDialog";
+import HelpingAs from "../admin/HelpingAs";
+import { RefreshIcon } from "../admin/icons";
+import QueueFilters from "../admin/QueueFilters";
+import { queueSections } from "../admin/queueSections";
+import QueueTabs, { panelId, tabId } from "../admin/QueueTabs";
+import RemoveEntryDialog from "../admin/RemoveEntryDialog";
+import QueueTable from "../admin/QueueTable";
+import StaffAccess from "../admin/StaffAccess";
+import { unclosedMonth } from "../shared/time";
+import { useEntryEditor } from "../hooks/useEntryEditor";
+import { useHelpedBy } from "../hooks/useHelpedBy";
+import { useQueueFilters } from "../hooks/useQueueFilters";
+import type { EntryChanges } from "../hooks/useEntries";
+import { useAdminSession } from "../hooks/useAdminSession";
+import { useEntries } from "../hooks/useEntries";
 
 /** Staff console: work the queue, book people in, export the full sheet. */
 export default function AdminPage() {

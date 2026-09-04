@@ -1,4 +1,4 @@
-import { MAX_NAME } from "../server/validate";
+import { MAX_NAME } from "../../server/shared/limits";
 
 type Props = {
   /** The name Google gave, or "" when it gave none. */

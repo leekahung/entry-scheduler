@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { StaffList, StaffMember } from "./api";
+import type { StaffList, StaffMember } from "../shared/types";
 import { duplicateReason } from "./staffList";
 
 const member = (over: Partial<StaffMember> = {}): StaffMember => ({

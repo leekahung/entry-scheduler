@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { missingForLog, type AdminEntry, type Priority } from "./api";
+import { missingForLog, type AdminEntry, type Priority } from "../shared/types";
 
 /**
  * The console's three filters and the rows they leave.

@@ -1,15 +1,10 @@
 import { useEffect, useState } from "react";
-import { isEmailish, normalizeEmail } from "../server/staff";
-import {
-  addStaff,
-  fetchStaff,
-  removeStaff,
-  type StaffList,
-  type StaffRole,
-} from "./api";
+import { isEmailish, normalizeEmail } from "../../server/shared/email";
+import type { StaffList, StaffRole } from "../shared/types";
+import { addStaff, fetchStaff, removeStaff } from "../shared/api";
 import ConfirmDialog from "./ConfirmDialog";
 import { duplicateReason } from "./staffList";
-import { useAsyncAction } from "./useAsyncAction";
+import { useAsyncAction } from "../hooks/useAsyncAction";
 
 /**
  * Lets an owner grant and revoke console access.

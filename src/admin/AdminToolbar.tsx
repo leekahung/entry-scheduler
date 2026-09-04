@@ -1,4 +1,4 @@
-import type { AdminEntry } from "./api";
+import type { AdminEntry } from "../shared/types";
 import { DownloadIcon, ExternalIcon, SignOutIcon } from "./icons";
 
 type Props = {

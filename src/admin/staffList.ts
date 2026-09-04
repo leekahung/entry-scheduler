@@ -1,4 +1,4 @@
-import type { StaffList, StaffRole } from "./api";
+import type { StaffList, StaffRole } from "../shared/types";
 
 const ROLE_WORD: Record<StaffRole, string> = {
   owner: "an owner",

@@ -1,5 +1,5 @@
-import type { AdminAlerts, ApiError } from "./api";
-import { minutesAgo } from "./time";
+import type { AdminAlerts, ApiError } from "../shared/api";
+import { minutesAgo } from "../shared/time";
 
 // One or two failures is someone fumbling their own passcode; a handful in a
 // quarter hour is worth staff looking up.

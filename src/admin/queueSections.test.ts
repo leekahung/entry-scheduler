@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AdminEntry, Status } from "./api";
+import type { AdminEntry, Status } from "../shared/types";
 import { queueSections } from "./queueSections";
 
 /** Only the fields the split actually reads; the rest never reach it. */

@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  fetchQueue,
-  joinQueue,
-  type QueueEntry,
-  type VisitorIntake,
-} from "./api";
-import CheckInForm from "./CheckInForm";
-import QueueBoard from "./QueueBoard";
-import WaitingList from "./WaitingList";
-import { formatAppointment } from "./time";
+import type { QueueEntry, VisitorIntake } from "../shared/types";
+import { fetchQueue, joinQueue } from "../shared/api";
+import CheckInForm from "../kiosk/CheckInForm";
+import QueueBoard from "../kiosk/QueueBoard";
+import WaitingList from "../kiosk/WaitingList";
+import { formatAppointment } from "../shared/time";
 
 const POLL_MS = 5000;
 

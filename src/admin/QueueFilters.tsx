@@ -1,4 +1,4 @@
-import { PRIORITIES, PRIORITY_LABEL, type Priority } from "./api";
+import { PRIORITIES, PRIORITY_LABEL, type Priority } from "../shared/types";
 
 type Props = {
   query: string;

@@ -1,4 +1,4 @@
-import { MAX_PHONE } from "../server/validate";
+import { MAX_PHONE } from "../../server/shared/limits";
 import { todayLocal } from "./time";
 
 /**

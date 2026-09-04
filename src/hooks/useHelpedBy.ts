@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MAX_NAME } from "../server/validate";
+import { MAX_NAME } from "../../server/shared/limits";
 
 /**
  * Who the console is helping as.

@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import { CASE_TYPE_LABEL } from "../server/codes";
+import { CASE_TYPE_LABEL } from "../../server/shared/codes";
 import {
   missingForLog,
   PRIORITIES,
@@ -7,10 +7,11 @@ import {
   type AdminEntry,
   type Priority,
   type Status,
-} from "./api";
-import EntryEditor, { type EditorDraft } from "./EntryEditor";
-import { formatAppointment, formatTime, waitedFor } from "./time";
-import type { EntryChanges } from "./useEntries";
+} from "../shared/types";
+import EntryEditor from "./EntryEditor";
+import type { EditorDraft } from "./editorDraft";
+import { formatAppointment, formatTime, waitedFor } from "../shared/time";
+import type { EntryChanges } from "../hooks/useEntries";
 
 const NEXT_STATUS: Record<Status, Status> = {
   new: "pending",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import AdminPage from "./AdminPage";
-import UserPage from "./UserPage";
+import AdminPage from "./pages/AdminPage";
+import UserPage from "./pages/UserPage";
 
 /** Hash routing keeps the admin screen on its own URL without a router dependency. */
 export default function App() {

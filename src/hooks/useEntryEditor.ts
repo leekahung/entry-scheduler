@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { AdminEntry } from "./api";
-import { seedDraft, type EditorDraft } from "./EntryEditor";
+import type { AdminEntry } from "../shared/types";
+import { seedDraft, type EditorDraft } from "../admin/editorDraft";
 
 /**
  * The row being edited and its draft.

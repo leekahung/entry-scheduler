@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { GENDERS, type Gender } from "../server/codes";
-import { MAX_NAME } from "../server/validate";
-import type { VisitorIntake } from "./api";
-import { CodeSelect, DobField, PhoneField } from "./fields";
+import { GENDERS, type Gender } from "../../server/shared/codes";
+import { MAX_NAME } from "../../server/shared/limits";
+import type { VisitorIntake } from "../shared/types";
+import { CodeSelect, DobField, PhoneField } from "../shared/fields";
 
 // A name field is short enough that a permanent counter is noise; only warn
 // once someone is close to the cap.

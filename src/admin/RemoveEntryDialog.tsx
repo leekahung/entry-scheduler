@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { AdminEntry } from "./api";
+import type { AdminEntry } from "../shared/types";
 
 const ACTION = "narrow:w-full";
 

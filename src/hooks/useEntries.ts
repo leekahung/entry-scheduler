@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
+import type {
+  AdminEntry,
+  CaseDetails,
+  Intake,
+  Priority,
+  Status,
+} from "../shared/types";
 import {
   ApiError,
   archiveMonths,
@@ -10,12 +17,7 @@ import {
   updatePriority,
   updateStatus,
   type AdminAlerts,
-  type AdminEntry,
-  type CaseDetails,
-  type Intake,
-  type Priority,
-  type Status,
-} from "./api";
+} from "../shared/api";
 
 const POLL_MS = 5000;
 

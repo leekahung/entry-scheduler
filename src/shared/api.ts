@@ -1,82 +1,17 @@
 import { todayLocal } from "./time";
 import type {
-  AppointmentOutcome,
-  AppointmentType,
-  CaseType,
-  Gender,
-  LegalOutcome,
-} from "../server/codes";
-
-export const STATUSES = ["new", "pending", "resolved"] as const;
-export type Status = (typeof STATUSES)[number];
-
-export const PRIORITIES = ["emergency", "urgent", "routine"] as const;
-export type Priority = (typeof PRIORITIES)[number];
-
-/** Short labels for the triage control; staff read these at a glance. */
-export const PRIORITY_LABEL: Record<Priority, string> = {
-  emergency: "Emergency",
-  urgent: "Urgent",
-  routine: "Routine",
-};
-
-/**
- * Plain-English labels for the screen. The stored values stay new/pending/
- * resolved so the CSV and API keep their existing meaning.
- */
-export const STATUS_LABEL: Record<Status, string> = {
-  new: "Waiting",
-  pending: "Being helped",
-  resolved: "Done",
-};
-
-export type QueueEntry = {
-  id: number;
-  /** Shortened for the shared screen — "Ada L.", never the full legal name. */
-  name: string;
-  status: Status;
-  createdAt: string;
-  /** Booked appointment time, or "" for a walk-in. */
-  scheduledFor: string;
-  /**
-   * Whether this entry has joined the line yet — always true for a walk-in,
-   * true for an appointment once its time arrives. Decided by the server so
-   * the board and the queue order can never disagree.
-   */
-  due: boolean;
-};
-
-/** The visitor-supplied half of the sign-in log row. */
-export type Intake = {
-  dob: string;
-  gender: Gender | "";
-  phone: string;
-  caseType: CaseType | "";
-};
-
-/** The part of the intake a visitor fills in themselves; staff add the rest. */
-export type VisitorIntake = Omit<Intake, "caseType">;
-
-/** The half staff fill in as the appointment happens. */
-export type CaseDetails = {
-  appointmentType: AppointmentType | "";
-  appointmentOutcome: AppointmentOutcome | "";
-  legalOutcome: LegalOutcome | "";
-  timeSpent: number;
-};
-
-export type AdminEntry = QueueEntry &
-  Intake &
-  CaseDetails & {
-    note: string;
-    updatedAt: string;
-    helpedBy: string;
-    adminNote: string;
-    priority: Priority;
-  };
-
-/** The join response carries the visitor's own full name, unshortened. */
-export type JoinedEntry = QueueEntry & { name: string };
+  AdminEntry,
+  CaseDetails,
+  Intake,
+  JoinedEntry,
+  Priority,
+  QueueEntry,
+  StaffMember,
+  StaffList,
+  StaffRole,
+  Status,
+  VisitorIntake,
+} from "./types";
 
 /** A failed request, carrying the status so 401 and 429 can be told apart. */
 export class ApiError extends Error {
@@ -189,24 +124,6 @@ export async function fetchSignedInEmail(): Promise<SignedIn | null> {
 export async function signOutOfGoogle(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST" });
 }
-
-export type StaffRole = "owner" | "staff";
-
-export type StaffMember = {
-  email: string;
-  role: StaffRole;
-  addedBy: string;
-  addedAt: string;
-};
-
-export type StaffList = {
-  you: { email: string; role: StaffRole } | null;
-  /** Owners set in the server's environment; not removable from the console. */
-  bootstrapOwners: string[];
-  /** Those of them that also carry a staff-tab row, which grants nothing. */
-  redundantRows: string[];
-  members: StaffMember[];
-};
 
 export async function fetchStaff(passcode: string): Promise<StaffList> {
   return parse<StaffList>(
@@ -379,18 +296,4 @@ export async function downloadCsv(passcode: string): Promise<void> {
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
-
-/**
- * What the processing log still needs before this client counts as recorded.
- * Legal outcome is deliberately not required: a consult that files nothing is
- * still a complete record.
- */
-export function missingForLog(entry: AdminEntry): string[] {
-  const missing: string[] = [];
-  if (!entry.caseType) missing.push("case type");
-  if (!entry.appointmentType) missing.push("appointment type");
-  if (!entry.appointmentOutcome) missing.push("appointment outcome");
-  if (!entry.timeSpent) missing.push("time spent");
-  return missing;
 }

@@ -1,4 +1,4 @@
-import type { QueueEntry } from "./api";
+import type { QueueEntry } from "../shared/types";
 
 // The visitor's own number is on their ticket; this ties it to the board.
 const YOU = "text-fine font-bold tracking-label-wide text-muted uppercase";

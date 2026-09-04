@@ -1,4 +1,4 @@
-import { STATUS_LABEL, type QueueEntry } from "./api";
+import { STATUS_LABEL, type QueueEntry } from "../shared/types";
 
 const BADGE_COLOR: Record<QueueEntry["status"], string> = {
   new: "text-new",

@@ -5,13 +5,13 @@ import {
   GENDERS,
   type CaseType,
   type Gender,
-} from "../server/codes";
-import { MAX_NAME, MAX_NOTE } from "../server/validate";
-import { PRIORITIES, PRIORITY_LABEL, type Priority } from "./api";
+} from "../../server/shared/codes";
+import { MAX_NAME, MAX_NOTE } from "../../server/shared/limits";
+import { PRIORITIES, PRIORITY_LABEL, type Priority } from "../shared/types";
 import ConfirmDialog from "./ConfirmDialog";
-import { CodeSelect, DobField, PhoneField } from "./fields";
-import { fromLocalInput } from "./time";
-import type { NewBooking } from "./useEntries";
+import { CodeSelect, DobField, PhoneField } from "../shared/fields";
+import { fromLocalInput } from "../shared/time";
+import type { NewBooking } from "../hooks/useEntries";
 
 const BLANK = {
   name: "",

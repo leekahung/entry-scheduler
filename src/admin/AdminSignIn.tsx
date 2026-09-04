@@ -1,4 +1,4 @@
-import type { useAdminSession } from "./useAdminSession";
+import type { useAdminSession } from "../hooks/useAdminSession";
 
 const REMAINING_WARN_FROM = 5;
 

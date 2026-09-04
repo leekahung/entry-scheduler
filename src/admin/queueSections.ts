@@ -1,4 +1,4 @@
-import type { AdminEntry } from "./api";
+import type { AdminEntry } from "../shared/types";
 
 export type QueueSection = {
   id: string;
