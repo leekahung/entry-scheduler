@@ -26,8 +26,8 @@ It takes its rightful place the moment its time comes.
 
 The server sends a `due` flag with every entry rather than letting each screen
 work it out, so the board, the console, and the ordering can never disagree.
-The console splits on it — **In the queue now** and **Scheduled later** — while
-the ordering underneath stays one line.
+The console splits on it — **Waiting** and **Scheduled later** — while the
+ordering underneath stays one line.
 
 ## The visitor screen
 
@@ -48,8 +48,9 @@ next!", or "Someone is helping you now". An appointment that has not come due
 says so instead of counting people. The ticket is remembered in `localStorage`,
 so a reload or a locked phone comes back to it.
 
-**Check someone else in** clears that device for the next person. It does not
-remove anyone from the queue — only staff can do that.
+**Check someone else in** clears that device and opens the check-in form
+straight away, ready for the next person. It does not remove anyone from the
+queue — only staff can do that.
 
 **Currently waiting** lists everyone in line as a number, a shortened name
 ("Ada L."), and a status. The shortening happens on the server, so the only
@@ -63,19 +64,25 @@ where that is configured, otherwise with one shared passcode held in
 Either way the console is refused outright from outside the local network
 unless `ALLOW_REMOTE_ADMIN=true`.
 
-**Helping as** — the name recorded against everyone you help. Type it once; it
-persists on that device.
+**Helping as** — the name recorded against everyone you help. With Google
+sign-in it is simply whoever is signed in, taken from their Google account and
+not editable: a console passed from one person to the next cannot credit one
+for the other's work. Where Google sends no display name — an account that has
+none set — the box comes back, rather than signing the work with an email
+address. On a passcode deployment there is no identity behind the shared
+credential, so the name is typed there and kept on that device.
 
-Three tables, all sharing the single queue order:
+Four tabs, all sharing the single queue order (arrow keys move between them):
 
-| Section              | Holds                                   |
-| -------------------- | --------------------------------------- |
-| **In the queue now** | Walk-ins and appointments that are due  |
-| **Scheduled later**  | Appointments whose time has not arrived |
-| **Done**             | Everyone already helped (collapsible)   |
+| Tab                 | Holds                                   |
+| ------------------- | --------------------------------------- |
+| **Waiting**         | Walk-ins and appointments that are due  |
+| **Being helped**    | Whoever staff are with right now        |
+| **Scheduled later** | Appointments whose time has not arrived |
+| **Done**            | Everyone already helped                 |
 
-Each row carries the number, full name, a triage dropdown, status, when they
-joined, who helped, and three actions:
+Each row carries the number, full name, case type, a triage dropdown, how long
+they have been waiting, who helped, and three actions:
 
 - **Start helping** → **Mark helped** → **Reopen** — one button that walks the
   status forward, and back if someone was closed by mistake.
@@ -90,8 +97,14 @@ the 5-second poll cannot overwrite half-typed changes.
 
 **Header actions** — **Book someone in** (a form for a walk-up who cannot work
 the screen, or for an appointment: leave the time blank for a walk-up),
-**Download spreadsheet**, **Sign out**, and **Clear all**, which empties the
-queue and restarts numbering at #1 for a fresh day.
+**Open spreadsheet** (owners only, and only where Sheets is configured),
+**Download spreadsheet**, **Staff access** (owners only — a button that opens
+and closes the access list), and **Sign out**, which asks first: on a shared
+console, signing out means finding whoever was signed in to get back in. Beside the queue tabs, owners
+also get **Sync List**, which copies the board into a tab per month it spans
+without taking anything off it.
+Months are filed away on their own — see [Month tabs](#month-tabs) — so this is
+only for taking a record early.
 
 A banner warns when failed sign-in attempts pile up, so staff can see someone
 guessing at the passcode. If the server stops accepting the session — a
@@ -174,6 +187,8 @@ Set these on the host:
 | `GOOGLE_SHEETS_ID` | Required. The queue is stored here; the id from the sheet URL. |
 | `GOOGLE_SHEETS_TAB` | Optional. Tab to write, defaults to `Sheet1`, the name Google gives the first tab of a new spreadsheet. |
 | `GOOGLE_STAFF_TAB` | Optional. Tab holding the staff list, defaults to `Staff`. |
+| `GOOGLE_STAFF_SHEETS_ID` | Optional. Keeps the staff list in its own spreadsheet, shared only with owners. Defaults to the queue's spreadsheet, where anyone who can open the file can read it. |
+| `TZ`             | The clinic's zone, e.g. `America/Los_Angeles`. Months are cut in local time, and a host left on UTC files a late evening into the next month. |
 | `GOOGLE_OAUTH_CLIENT_ID` | Turns on Google sign-in for staff. With it set, the passcode is no longer accepted. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | From the same OAuth client. |
 | `SESSION_SECRET` | Signs the staff session cookie. At least 32 random characters. |
@@ -282,15 +297,32 @@ Setting it up:
 4. Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, a long random
    `SESSION_SECRET`, and `ADMIN_EMAILS`.
 
+Sign-in asks for `openid`, `email` and `profile`. The last of those is what
+carries the display name the console credits work to; without it Google sends
+only an address, and the sign-in log reads as a column of email addresses.
+
 Sessions last 12 hours and live in an HttpOnly, SameSite=Lax cookie; nothing is
-stored on the device.
+stored on the device. The name travels in that cookie, so anyone already signed
+in shows as their email address until their next sign-in.
 
 ## The spreadsheet is the database
 
-One tab holds the queue. The eleven human columns of the sign-in log come
-first, then the bookkeeping the log has no room for — `id`, `status`,
-`createdAt`, `updatedAt`, `helpedBy`, `note`, `adminNote`, `priority`,
-`scheduledFor` — so a row can be read back as a whole entry.
+One tab holds the queue. The human columns of the sign-in log come first —
+with the log's single **Notes** column split into **Notes** (the visitor's) and
+**Staff Notes**, since the console has to tell them apart — then the
+bookkeeping the log has no room for: **ID**, **Status**, **Signed In**, **Last
+Changed**, **Helped By**, **Priority**, **Appointment Time**. A row is a whole
+entry.
+
+**Signed In**, **Last Changed** and **Appointment Time** are written as a plain
+`2026-09-03 14:15:32` in the host's zone rather than as an ISO timestamp, so
+the tab reads like a log. They are still read back to the second, and an ISO
+value typed in by hand is accepted too.
+
+Columns are read back by header name, and the headers they used to go by
+(`id`, `createdAt`, `adminNote` and the rest) are still accepted, so a
+spreadsheet written by an older version keeps working; the next write renames
+them in place.
 
 Because it is the store rather than a copy, editing the tab edits the queue —
 but only in the cells the app reads back. Every change rewrites the whole tab
@@ -298,21 +330,20 @@ in the app's own column order, so anything else you type there is overwritten
 by the next check-in or save. Specifically:
 
 - **Kept:** edits to a value column the app reads — a name, a phone number, a
-  case type, `status`, `priority`, `scheduledFor`, and so on.
+  case type, **Status**, **Priority**, **Appointment Time**, either notes
+  column, and so on.
 - **Overwritten:** a column you add yourself, anywhere in the tab.
-- **Overwritten:** the `Date` and `Notes` columns. Both are derived — `Date`
-  from `createdAt`, `Notes` from the visitor note and the admin note joined
-  together — so neither is read back. Type in the `note` or `adminNote`
-  columns instead, or use the console.
+- **Overwritten:** the **Date** column, which is derived from **Signed In** and
+  so is never read back.
 
-Rows without a numeric `id` are ignored, so a note typed into a spare row is
-harmless. A hand-edited `status` or `priority` that is not a recognised value
+Rows without a numeric **ID** are ignored, so a note typed into a spare row is
+harmless. A hand-edited **Status** or **Priority** that is not a recognised value
 falls back to `new` / `routine` rather than breaking the board.
 
 Two consequences worth knowing:
 
-- **"Clear all" empties the spreadsheet too.** The CSV download is the only
-  record that survives it, which is why the confirmation offers it.
+- **The board is rewritten in full on every change.** A column added by hand
+  is overwritten; the month tabs are where finished work is kept.
 - Reads are cached for five seconds. An edit made directly in Google Sheets
   shows up in the console within that, not instantly.
 
@@ -361,6 +392,58 @@ Two other things to get right before real use:
   arriving with an `X-Forwarded-For` header the app was not told to trust is
   treated as off-network rather than guessed about.
 
+### Keeping the access list to owners
+
+The **Staff access** panel in the console opens only for owners, and the server
+enforces it — but the list itself lives in the spreadsheet, and Google Sheets has no way
+to keep one tab from someone who can open the file. A protected range stops
+*edits*, not reads, and a hidden sheet is unhidden from a menu.
+
+So if staff can open the queue spreadsheet at all, they can read who has
+access. To keep it to owners, put the list in a spreadsheet of its own:
+
+1. Create a second spreadsheet, shared only with the owners **and the service
+   account, as an Editor**.
+2. Set `GOOGLE_STAFF_SHEETS_ID` to its id. `GOOGLE_STAFF_TAB` still names the
+   tab within it, and the app creates that tab on first write.
+
+The server logs a warning at startup while the two share a file, so a
+deployment cannot quietly stay that way by accident.
+
+Whichever file it lives in, protecting the tab is still worth doing: it stops a
+staff member with edit access from writing themselves an `owner` row. In Google
+Sheets, right-click the tab → **Protect sheet**, and leave only the service
+account able to edit.
+
+## Month tabs
+
+The board is the working queue, not the archive. Each month it spans is kept
+in its own tab named for it — "September 2026". The live log stays the first
+tab of the spreadsheet; a month is filed into a tab directly after it, so the
+newest month sits next to the log and older ones shift further right.
+
+Two things write those tabs:
+
+- **By itself.** On the first change of a new month the whole board is copied
+  into its month tabs, and the finished entries from months that have ended
+  come off the board. Nobody has to remember to close a month out.
+- **Sync List**, beside the queue tabs, does the copying early. It
+  takes nothing off the board — whatever month it is — and never makes a second
+  tab for a month it has already written. It also writes the board back to its
+  own tab, which renames any headers left by an older version.
+
+Anything still open stays on the board however old it is, so an appointment
+booked for next month is never filed away from under the person waiting on it.
+An entry keeps the month it was taken in, so a case carried over is written to
+its own month rather than the current one, and a tab keeps rows the board no
+longer has: saving again merges rather than replacing, matching on the entry
+number together with its sign-in time, since numbering used to restart and one
+month can hold two different people as #3.
+
+Months are cut in the server's local time, so set `TZ` to the clinic's zone.
+On a host left at UTC an entry taken on the evening of the 31st is filed a
+month ahead of when it was really taken.
+
 ## Who can do what
 
 Permissions are enforced on the server, not just hidden in the UI — the admin
@@ -384,7 +467,9 @@ directly.
 | See timestamps and who helped             | ❌      | ✅    | ✅    |
 | Export CSV                                | ❌      | ✅    | ✅    |
 | Remove an entry                           | ❌      | ✅    | ✅    |
-| Clear the whole queue                     | ❌      | ✅    | ✅    |
+| Sync the board to its month tabs          | ❌      | ❌    | ✅    |
+| Open the spreadsheet itself               | ❌      | ❌    | ✅    |
+| See the failed sign-in warning            | ❌      | ❌    | ✅    |
 | Grant or revoke console access            | ❌      | ❌    | ✅    |
 
 The owner column applies only where Google sign-in is configured. On a
@@ -437,11 +522,12 @@ formulas.
 - Data lives in the Google Sheet named by `GOOGLE_SHEETS_ID`; there is no
   local database. If Google is unreachable, so is the queue.
 - **Sign out** clears the staff session for that tab. With Google sign-in an
-  owner can revoke one person from the Staff access panel and it takes effect
-  within about 30 seconds. With the shared passcode there is nothing to revoke
+  owner can revoke one person from the Staff access panel — behind a
+  confirmation, since it locks them out mid-shift — and it takes effect within
+  about 30 seconds. With the shared passcode there is nothing to revoke
   per person: change `ADMIN_PASSCODE` and restart, which locks out everyone.
-- "Helped by" is a name typed by staff rather than the signed-in identity, even
-  where Google sign-in is on.
+- "Helped by" is the signed-in identity where Google sign-in is on, and a name
+  typed on the device where it is not.
 - Both screens poll every 5 seconds rather than using websockets.
 - Serve over HTTPS before using this anywhere beyond a trusted local network —
   the passcode is sent as a plain header.
