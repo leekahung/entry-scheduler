@@ -33,7 +33,21 @@ describe("the sheet as a record format", () => {
   it("keeps the human log columns first, so the sheet still reads as a log", () => {
     const [header] = toSheetValues([]);
     expect(header.slice(0, 3)).toEqual(["Date", "Client Name", "DOB"]);
-    expect(header).toContain("id");
+    expect(header).toContain("ID");
+  });
+
+  it("writes timestamps as a date and time staff can read", () => {
+    const at = new Date(2026, 7, 5, 14, 15, 32);
+    const [header, row] = toSheetValues([
+      makeEntry({ createdAt: at.toISOString() }),
+    ]);
+    expect(row[header.indexOf("Signed In")]).toBe("2026-08-05 14:15:32");
+    expect(fromSheetValues([header, row])[0].createdAt).toBe(at.toISOString());
+  });
+
+  it("leaves a walk-up's empty appointment time empty", () => {
+    const [header, row] = toSheetValues([makeEntry({ scheduledFor: "" })]);
+    expect(row[header.indexOf("Appointment Time")]).toBe("");
   });
 
   it("fits inside the A1:Z range the transport reads and writes", () => {
@@ -42,12 +56,40 @@ describe("the sheet as a record format", () => {
     expect(header.length).toBeLessThanOrEqual(26);
   });
 
-  it("splits the merged Notes column back into the two notes", () => {
-    const [, row] = toSheetValues([
+  it("keeps the two notes in their own columns rather than a merged one", () => {
+    const [header, row] = toSheetValues([
       makeEntry({ note: "visitor", adminNote: "staff" }),
     ]);
-    const [header] = toSheetValues([]);
-    expect(row[header.indexOf("Notes")]).toBe("visitor\nstaff");
+    expect(row[header.indexOf("Notes")]).toBe("visitor");
+    expect(row[header.indexOf("Staff Notes")]).toBe("staff");
+    // The merged column the CSV log carries would repeat both of these.
+    expect(header.filter((name) => String(name).includes("Notes"))).toEqual([
+      "Notes",
+      "Staff Notes",
+    ]);
+  });
+
+  it("still reads a sheet written under the old machine headers", () => {
+    const old = [
+      ["id", "Notes", "note", "adminNote", "status", "helpedBy", "createdAt"],
+      [
+        4,
+        "visitor\nstaff",
+        "visitor",
+        "staff",
+        "pending",
+        "Kim",
+        "2026-08-05T10:00:00.000Z",
+      ],
+    ];
+    expect(fromSheetValues(old)[0]).toMatchObject({
+      id: 4,
+      note: "visitor",
+      adminNote: "staff",
+      status: "pending",
+      helpedBy: "Kim",
+      createdAt: "2026-08-05T10:00:00.000Z",
+    });
     const [back] = fromSheetValues(
       toSheetValues([makeEntry({ note: "visitor", adminNote: "staff" })]),
     );
@@ -75,8 +117,8 @@ describe("the sheet as a record format", () => {
 
   it("falls back to safe values when a cell has been hand-edited to nonsense", () => {
     const [header, row] = toSheetValues([makeEntry({ id: 1 })]);
-    row[header.indexOf("status")] = "banana";
-    row[header.indexOf("priority")] = "";
+    row[header.indexOf("Status")] = "banana";
+    row[header.indexOf("Priority")] = "";
     row[header.indexOf("Time (0.25 increments)")] = "not a number";
     const [entry] = fromSheetValues([header, row]);
     expect(entry.status).toBe("new");
@@ -101,17 +143,13 @@ describe("the store", () => {
     await expect(store.list()).resolves.toHaveLength(1);
   });
 
-  it("numbers from the rows already in the sheet, so a clear restarts at #1", async () => {
+  it("numbers from the rows already in the sheet", async () => {
     const sheet = fakeSheet();
     const store = createStore(sheet.transport);
 
     await store.add("Ada", "");
     const second = await store.add("Bo", "");
     expect(second.id).toBe(2);
-
-    await store.clear();
-    const afterClear = await store.add("Cai", "");
-    expect(afterClear.id).toBe(1);
   });
 
   it("picks up an entry added to the spreadsheet by hand", async () => {

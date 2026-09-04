@@ -128,7 +128,10 @@ export function googleTransport(
   // Only for tabs the app owns and may create, such as the staff list. Never
   // for the log: a typo in the tab name must fail loudly rather than quietly
   // create an empty tab and read the queue as empty.
-  { createMissing = false }: { createMissing?: boolean } = {},
+  {
+    createMissing = false,
+    atIndex,
+  }: { createMissing?: boolean; atIndex?: number } = {},
 ): SheetTransport {
   // A1 notation needs the sheet name single-quoted, or a tab called
   // "Sign In Log" is rejected as an unparseable range. Internal quotes double.
@@ -157,7 +160,7 @@ export function googleTransport(
 
     async write(rows) {
       const token = await getToken(config);
-      if (createMissing) await ensureTab(config, token);
+      if (createMissing) await ensureTab(config, token, atIndex);
       const width = rows[0]?.length ?? 0;
       const blank = Array<string>(width).fill("");
       const padded = [
@@ -189,15 +192,23 @@ const created = new Set<string>();
 /**
  * Creates the tab if the spreadsheet does not have it yet.
  * Remembered per process, so this costs one request rather than one per write.
+ * `atIndex` places it: month tabs go to the right of the live log, which keeps
+ * its place as the first tab of the spreadsheet.
  */
-async function ensureTab(config: SheetsConfig, token: string): Promise<void> {
+async function ensureTab(
+  config: SheetsConfig,
+  token: string,
+  atIndex?: number,
+): Promise<void> {
   const key = `${config.spreadsheetId}:${config.tab}`;
   if (created.has(key)) return;
   try {
     await call(config, token, `${config.spreadsheetId}:batchUpdate`, {
       method: "POST",
       body: {
-        requests: [{ addSheet: { properties: { title: config.tab } } }],
+        requests: [
+          { addSheet: { properties: { title: config.tab, index: atIndex } } },
+        ],
       },
     });
   } catch (error) {

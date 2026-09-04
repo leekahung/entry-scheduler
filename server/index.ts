@@ -86,15 +86,31 @@ if (!sheets) {
   process.exit(1);
 }
 
-const store = createStore(googleTransport(sheets));
+// Each month the board spans is kept in its own tab. The live log stays the
+// first tab; a newly filed month goes in directly after it, pushing the older
+// months further right.
+const store = createStore(googleTransport(sheets), {
+  openTab: (tab) =>
+    googleTransport({ ...sheets, tab }, undefined, {
+      createMissing: true,
+      atIndex: 1,
+    }),
+});
 
-// Who may use the console, in its own tab of the same spreadsheet. The app
-// creates that tab on first write, so a fresh deployment needs no setup.
+// Who may use the console. Its own tab, and — where GOOGLE_STAFF_SHEETS_ID
+// names one — its own spreadsheet: a tab cannot be kept from someone who can
+// open the file, so a separate file shared only with owners is the only way
+// the access list is not readable by everyone who can read the queue. The app
+// creates the tab on first write, so a fresh deployment needs no setup.
 const staffTab = process.env.GOOGLE_STAFF_TAB?.trim() || "Staff";
+const staffSheetId =
+  process.env.GOOGLE_STAFF_SHEETS_ID?.trim() || sheets.spreadsheetId;
 const staff = createStaffStore(
-  googleTransport({ ...sheets, tab: staffTab }, undefined, {
-    createMissing: true,
-  }),
+  googleTransport(
+    { ...sheets, spreadsheetId: staffSheetId, tab: staffTab },
+    undefined,
+    { createMissing: true },
+  ),
 );
 
 // The console is closed to anything off the local network unless something
@@ -103,6 +119,12 @@ if (auth) {
   console.log(
     `Staff sign in with Google; ${auth.allowed.size} owner(s) set on the server, plus the "${staffTab}" tab`,
   );
+  if (staffSheetId === sheets.spreadsheetId) {
+    console.warn(
+      `The staff list shares a spreadsheet with the queue, so anyone who can open it can read who has access.\n` +
+        "Set GOOGLE_STAFF_SHEETS_ID to a spreadsheet shared only with owners and this service account to keep it to them.",
+    );
+  }
   if (auth.allowed.size === 0) {
     console.warn(
       "ADMIN_EMAILS is empty — only addresses in the staff tab can sign in.",

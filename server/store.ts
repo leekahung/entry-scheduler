@@ -1,4 +1,12 @@
+import {
+  byMonth,
+  currentMonth,
+  finishedBefore,
+  mergeById,
+  monthTab,
+} from "./archive.js";
 import { LOG_COLUMNS } from "./csv.js";
+import { fromStamp, toStamp } from "./stamp.js";
 import {
   DEFAULT_PRIORITY,
   isPriority,
@@ -25,6 +33,9 @@ export type SheetTransport = {
 
 type Cell = string | number;
 type Setter = (entry: Entry, raw: string) => void;
+/** A tab column: its header, how it is written, how it is read, and the
+ * headers it used to go by, so an existing sheet keeps being read. */
+type Column = [string, (e: Entry) => Cell, Setter | null, string[]?];
 
 /**
  * How each human log column is read back. "Date" and "Notes" are derived and
@@ -63,83 +74,99 @@ const LOG_SETTERS: Record<string, Setter | null> = {
 };
 
 /**
- * The bookkeeping the human log has no column for, written to the right of it.
- * Without these the spreadsheet could not round-trip an entry.
+ * The two notes, in place of the log's single merged column. The log squashes
+ * them together; the tab has to keep them apart, or the console could not tell
+ * a visitor's note from one written for staff only.
  */
-const STATE_COLUMNS: readonly [string, (e: Entry) => Cell, Setter][] = [
+const NOTE_COLUMNS: readonly Column[] = [
   [
-    "id",
-    (e) => e.id,
-    (e, raw) => {
-      e.id = Number(raw);
-    },
-  ],
-  [
-    "status",
-    (e) => e.status,
-    (e, raw) => {
-      e.status = isStatus(raw) ? raw : "new";
-    },
-  ],
-  [
-    "createdAt",
-    (e) => e.createdAt,
-    (e, raw) => {
-      e.createdAt = raw;
-    },
-  ],
-  [
-    "updatedAt",
-    (e) => e.updatedAt,
-    (e, raw) => {
-      e.updatedAt = raw;
-    },
-  ],
-  [
-    "helpedBy",
-    (e) => e.helpedBy,
-    (e, raw) => {
-      e.helpedBy = raw;
-    },
-  ],
-  [
-    "note",
+    "Notes",
     (e) => e.note,
     (e, raw) => {
       e.note = raw;
     },
+    ["note"],
   ],
   [
-    "adminNote",
+    "Staff Notes",
     (e) => e.adminNote,
     (e, raw) => {
       e.adminNote = raw;
     },
+    ["adminNote"],
+  ],
+];
+
+/**
+ * The bookkeeping the human log has no column for, written to the right of it.
+ * Without these the spreadsheet could not round-trip an entry.
+ */
+const STATE_COLUMNS: readonly Column[] = [
+  [
+    "ID",
+    (e) => e.id,
+    (e, raw) => {
+      e.id = Number(raw);
+    },
+    ["id"],
   ],
   [
-    "priority",
+    "Status",
+    (e) => e.status,
+    (e, raw) => {
+      e.status = isStatus(raw) ? raw : "new";
+    },
+    ["status"],
+  ],
+  [
+    "Signed In",
+    (e) => toStamp(e.createdAt),
+    (e, raw) => {
+      e.createdAt = fromStamp(raw);
+    },
+    ["createdAt"],
+  ],
+  [
+    "Last Changed",
+    (e) => toStamp(e.updatedAt),
+    (e, raw) => {
+      e.updatedAt = fromStamp(raw);
+    },
+    ["updatedAt"],
+  ],
+  [
+    "Helped By",
+    (e) => e.helpedBy,
+    (e, raw) => {
+      e.helpedBy = raw;
+    },
+    ["helpedBy"],
+  ],
+  [
+    "Priority",
     (e) => e.priority,
     (e, raw) => {
       e.priority = isPriority(raw) ? raw : DEFAULT_PRIORITY;
     },
+    ["priority"],
   ],
   [
-    "scheduledFor",
-    (e) => e.scheduledFor,
+    "Appointment Time",
+    (e) => toStamp(e.scheduledFor),
     (e, raw) => {
-      e.scheduledFor = raw;
+      e.scheduledFor = fromStamp(raw);
     },
+    ["scheduledFor"],
   ],
 ];
 
-const COLUMNS: readonly [string, (e: Entry) => Cell, Setter | null][] = [
-  ...LOG_COLUMNS.map(
-    ([header, read]) =>
-      [header, read, LOG_SETTERS[header] ?? null] as [
-        string,
-        (e: Entry) => Cell,
-        Setter | null,
-      ],
+const COLUMNS: readonly Column[] = [
+  ...LOG_COLUMNS.flatMap(([header, read]): Column[] =>
+    // The log's merged Notes column would repeat, cell for cell, what the two
+    // note columns already hold.
+    header === "Notes"
+      ? [...NOTE_COLUMNS]
+      : [[header, read, LOG_SETTERS[header] ?? null]],
   ),
   ...STATE_COLUMNS,
 ];
@@ -193,13 +220,20 @@ export function toSheetValues(entries: Entry[]): Cell[][] {
  *
  * Rows without a numeric id are skipped, which lets staff leave notes or
  * blank lines in the sheet without breaking the queue.
+ *
+ * Headers the columns used to go by are still accepted, so a sheet written
+ * before they were renamed keeps being read until the next write renames it.
  */
 export function fromSheetValues(values: Cell[][]): Entry[] {
   const [header, ...rows] = values;
   if (!header) return [];
 
   const readers = header.map((name) => {
-    const column = COLUMNS.find(([candidate]) => candidate === String(name));
+    const found = String(name);
+    const column = COLUMNS.find(
+      ([candidate, , , aliases]) =>
+        candidate === found || aliases?.includes(found),
+    );
     return column?.[2] ?? null;
   });
 
@@ -214,6 +248,9 @@ export function fromSheetValues(values: Cell[][]): Entry[] {
   return entries;
 }
 
+/** What a sync wrote, for the console to report back. */
+export type SyncResult = { months: string[]; entries: number };
+
 export type Store = {
   list(): Promise<Entry[]>;
   add(
@@ -224,7 +261,16 @@ export type Store = {
   ): Promise<Entry>;
   update(id: number, update: EntryUpdate): Promise<Entry | undefined>;
   remove(id: number): Promise<boolean>;
-  clear(): Promise<number>;
+  sync(): Promise<SyncResult>;
+};
+
+export type StoreOptions = {
+  /**
+   * Opens the tab a month is archived in, creating it when it is not there
+   * yet. Left out — as the tests do — nothing is archived and the board is
+   * simply the whole record.
+   */
+  openTab?: (tab: string) => SheetTransport;
 };
 
 /**
@@ -234,7 +280,10 @@ export type Store = {
  * cache so the five-second polling of the board and the console does not
  * spend the Sheets read quota.
  */
-export function createStore(transport: SheetTransport): Store {
+export function createStore(
+  transport: SheetTransport,
+  { openTab }: StoreOptions = {},
+): Store {
   let cache: Entry[] | null = null;
   let cachedAt = 0;
   // Read-modify-write over a whole tab has no transaction behind it, so
@@ -255,16 +304,77 @@ export function createStore(transport: SheetTransport): Store {
     cachedAt = Date.now();
   }
 
-  /** Runs a read-modify-write against the freshest copy of the tab. */
-  function change<T>(mutate: (entries: Entry[]) => Promise<T> | T): Promise<T> {
+  /**
+   * Copies the board into a tab per month it spans, merging rather than
+   * replacing so a month already filed away keeps its rows.
+   */
+  async function syncMonths(entries: Entry[]): Promise<SyncResult> {
+    if (!openTab) return { months: [], entries: 0 };
+    const months: string[] = [];
+    let written = 0;
+    for (const [key, rows] of byMonth(entries)) {
+      const tab = openTab(monthTab(key));
+      const merged = mergeById(fromSheetValues(await tab.read()), rows);
+      await tab.write(toSheetValues(merged));
+      months.push(monthTab(key));
+      written += rows.length;
+    }
+    return { months, entries: written };
+  }
+
+  /**
+   * Files away a month that has ended: everything on the board goes to its own
+   * month tab, then the finished rows from earlier months come off the board.
+   * Runs on the first change of a new month, so nobody has to remember to.
+   */
+  async function rollOver(entries: Entry[]): Promise<Entry[]> {
+    if (!openTab) return entries;
+    const stale = new Set(finishedBefore(entries, currentMonth()));
+    if (stale.size === 0) return entries;
+    try {
+      await syncMonths(entries);
+    } catch (error) {
+      // Filing can wait for the next change; the queue cannot. Without this a
+      // month tab Google is unhappy with fails every check-in, over and over,
+      // because the rollover is on the path of every write.
+      console.error("Month rollover failed — the board stands:", error);
+      return entries;
+    }
+    // Only ever after a sync that landed: a row leaves the board because it is
+    // safely in its month tab, never merely because the month turned.
+    const kept = entries.filter((entry) => !stale.has(entry));
+    await save(kept);
+    return kept;
+  }
+
+  /** Runs work against the freshest copy of the tab, one caller at a time. */
+  function queued<T>(work: (entries: Entry[]) => Promise<T> | T): Promise<T> {
     const run = queue.then(async () => {
       // Never from cache: a write must not be built on a stale read.
       cache = null;
-      return mutate(await load());
+      return work(await load());
     });
     // Keep the chain alive even when this caller's write fails.
     queue = run.catch(() => {});
     return run;
+  }
+
+  /**
+   * A read-modify-write, with the rollover behind it: a change is what files
+   * an ended month away. It runs after rather than before, so a change always
+   * lands on the board staff were looking at — filing first would 404 the very
+   * row someone reopened or removed from the Done tab. Saving to the month
+   * tabs deliberately does not go through here — copying the board must never
+   * empty part of it.
+   */
+  function change<T>(mutate: (entries: Entry[]) => Promise<T> | T): Promise<T> {
+    return queued(async (entries) => {
+      const result = await mutate(entries);
+      // The board as the mutation left it: `save` refreshes the cache, and a
+      // mutation that changed nothing never saved.
+      await rollOver(cache ?? entries);
+      return result;
+    });
   }
 
   return {
@@ -320,11 +430,13 @@ export function createStore(transport: SheetTransport): Store {
       });
     },
 
-    clear() {
-      return change(async (entries) => {
-        await save([]);
-        return entries.length;
-      });
-    },
+    // Nothing is taken off the board, whatever month it is: this copies, and
+    // only a queue change files an ended month away. The board is written back
+    // as well as copied, which renames any headers an older version left.
+    sync: () =>
+      queued(async (entries) => {
+        await save(entries);
+        return syncMonths(entries);
+      }),
   };
 }

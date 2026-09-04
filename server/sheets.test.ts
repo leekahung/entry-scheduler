@@ -154,6 +154,19 @@ describe("googleTransport", () => {
     expect(calls.every(([url]) => !url.includes(":clear"))).toBe(true);
   });
 
+  it("puts a month tab after the log rather than in front of it", async () => {
+    const calls = record();
+    await googleTransport({ ...config, tab: "August 2026" }, token, {
+      createMissing: true,
+      atIndex: 1,
+    }).write([["ID"], [1]]);
+    const body = JSON.parse(String(calls[0][1].body));
+    expect(body.requests[0].addSheet.properties).toMatchObject({
+      title: "August 2026",
+      index: 1,
+    });
+  });
+
   it("explains a 403 as the sheet not being shared", async () => {
     vi.stubGlobal("fetch", () =>
       Promise.resolve(new Response("denied", { status: 403 })),

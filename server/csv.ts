@@ -1,4 +1,5 @@
 import type { Entry } from "./entry.js";
+import { toStamp } from "./stamp.js";
 
 /**
  * The SIGN IN LOG SPREADSHEET header row, in its own order.
@@ -9,7 +10,9 @@ export const LOG_COLUMNS: readonly [
   string,
   (entry: Entry) => string | number,
 ][] = [
-  ["Date", (e) => e.createdAt.slice(0, 10)],
+  // The local date, to agree with the "Signed In" column of the tab: sliced
+  // from the ISO it would be the UTC date, a day ahead for an evening sign-in.
+  ["Date", (e) => toStamp(e.createdAt).slice(0, 10)],
   ["Client Name", (e) => e.name],
   ["DOB", (e) => e.dob],
   ["Gender", (e) => e.gender],
