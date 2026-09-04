@@ -86,9 +86,11 @@ if (!sheets) {
   process.exit(1);
 }
 
-// Each month the board spans is kept in its own tab. The live log stays the
-// first tab; a newly filed month goes in directly after it, pushing the older
-// months further right.
+// Each month the board spans is kept in its own tab, and the live log stays
+// the first tab. A month ending on its own goes in directly after it, pushing
+// the older months further right. Several months filed at once — a first
+// archive of a board that spans a year — are written side by side, so they
+// land after the log in no particular order among themselves.
 const store = createStore(googleTransport(sheets), {
   openTab: (tab) =>
     googleTransport({ ...sheets, tab }, undefined, {
@@ -132,6 +134,15 @@ if (auth) {
   }
 }
 
+// Building the Google auth client costs about 2.7 seconds and the first read
+// a round trip to Google. A starting instance has boosted CPU and no traffic,
+// which is where that belongs — not on the visitor who happens to be the first
+// through the door after a quiet spell.
+store.list().catch((error) => {
+  // Only a warm-up: the first real request will try again and report properly.
+  console.warn("Could not read the queue at startup:", error);
+});
+
 const app = createApp(store, passcode, staticDir, allowRemoteAdmin, { staff });
 
 // Only behind a proxy that sets X-Forwarded-For itself, such as Cloud Run.
@@ -166,7 +177,11 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     if (stopping) process.exit(1);
     stopping = true;
     console.log(`${signal} received — finishing in-flight requests`);
-    server.close(() => process.exit(0));
+    // Filing an ended month away happens behind the response now, so a closed
+    // listener is no longer proof that nothing is still writing.
+    server.close(() => {
+      store.settled().finally(() => process.exit(0));
+    });
     // unref so a quiet server still exits the moment close() completes.
     setTimeout(() => {
       console.warn("Shutdown grace expired — exiting with work still open");

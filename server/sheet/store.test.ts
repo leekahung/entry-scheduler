@@ -87,6 +87,104 @@ describe("the store", () => {
     expect(sheet.counts.read).toBe(1);
   });
 
+  it("shares one read between the polls that land together", async () => {
+    let reads = 0;
+    const transport: SheetTransport = {
+      async read() {
+        reads += 1;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        return [];
+      },
+      async write() {},
+    };
+    const store = createStore(transport);
+
+    // A waiting room's worth of five-second polling, all of it landing while
+    // the one read is still on its way to Google.
+    await Promise.all(Array.from({ length: 20 }, () => store.list()));
+    expect(reads).toBe(1);
+  });
+
+  it("does not let a poll already in flight put its stale board back", async () => {
+    let rows: (string | number)[][] = [];
+    let landed: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      landed = resolve;
+    });
+    let reads = 0;
+    const transport: SheetTransport = {
+      async read() {
+        reads += 1;
+        // The first read is a poll that saw the board empty and only comes
+        // back after the check-in behind it has already saved.
+        if (reads === 1) {
+          const before = rows;
+          await held;
+          return before;
+        }
+        return rows;
+      },
+      async write(next) {
+        rows = next;
+      },
+    };
+    const store = createStore(transport);
+
+    const polling = store.list();
+    await store.add("Ada", "");
+    landed();
+    await expect(polling).resolves.toEqual([]);
+
+    // Ada must not go back off the board until the cache next expires.
+    await expect(store.list()).resolves.toHaveLength(1);
+  });
+
+  it("does not let a read taken during a slow write put the old board back", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let rows: (string | number)[][] = [];
+    let releaseWrite: () => void = () => {};
+    const writeHeld = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let releaseRead: () => void = () => {};
+    const readHeld = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    let reads = 0;
+    const transport: SheetTransport = {
+      async read() {
+        reads += 1;
+        // The second read is a poll that starts while the write is still in
+        // flight, so it sees the board as it was and lands after the save.
+        if (reads === 2) {
+          const before = rows;
+          await readHeld;
+          return before;
+        }
+        return rows;
+      },
+      async write(next) {
+        await writeHeld;
+        rows = next;
+      },
+    };
+    const store = createStore(transport);
+
+    const added = store.add("Ada", "");
+    await vi.advanceTimersByTimeAsync(1);
+    // The write outlives the cache it was built on — reachable now that a
+    // rate-limited call backs off for seconds before it lands.
+    await vi.advanceTimersByTimeAsync(CACHE_MS + 1);
+    const polling = store.list();
+
+    releaseWrite();
+    await added;
+    releaseRead();
+    await polling;
+
+    await expect(store.list()).resolves.toHaveLength(1);
+  });
+
   it("goes back to the spreadsheet once the cache is stale", async () => {
     const sheet = fakeSheet();
     const store = createStore(sheet.transport);

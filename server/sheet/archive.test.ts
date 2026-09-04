@@ -8,7 +8,7 @@ import {
 } from "./archive.js";
 import { makeEntry } from "../domain/entry.fixture.js";
 import { fakeSheet } from "./sheet.fixture.js";
-import { fromSheetValues } from "./columns.js";
+import { fromSheetValues, toSheetValues } from "./columns.js";
 import { createStore, type SheetTransport } from "./store.js";
 
 /** The month tabs a store writes to, each an in-memory sheet of its own. */
@@ -141,6 +141,7 @@ describe("a store with month tabs", () => {
     // not take must not stop someone checking in.
     vi.setSystemTime(new Date(SEPTEMBER));
     await expect(store.add("Bo", "")).resolves.toMatchObject({ name: "Bo" });
+    await store.settled();
     // And nothing may leave the board on the strength of a sync that failed.
     const left = await store.list();
     expect(left.map((entry) => entry.name)).toEqual(["Ada", "Bo"]);
@@ -152,6 +153,7 @@ describe("a store with month tabs", () => {
     const { tabs, store } = board();
     const done = await store.add("Ada", "");
     await store.update(done.id, { status: "resolved" });
+    await store.settled();
 
     vi.setSystemTime(new Date(SEPTEMBER));
     const result = await store.sync();
@@ -188,6 +190,7 @@ describe("a store with month tabs", () => {
 
     vi.setSystemTime(new Date(SEPTEMBER));
     await store.add("Cai", "");
+    await store.settled();
 
     const left = await store.list();
     expect(left.map((entry) => entry.name)).toEqual(["Bo", "Cai"]);
@@ -196,6 +199,104 @@ describe("a store with month tabs", () => {
       "Bo",
     ]);
     expect(open.name).toBe("Bo");
+  });
+
+  /** A board whose month tabs cannot finish a write until it is released. */
+  function heldBoard() {
+    const tabs = fakeTabs();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const live = fakeSheet();
+    const store = createStore(live.transport, {
+      openTab: (tab) => {
+        const sheet = tabs.open(tab);
+        return {
+          read: sheet.read,
+          write: async (rows) => {
+            await held;
+            return sheet.write(rows);
+          },
+        };
+      },
+    });
+    return { tabs, live, store, release: () => release() };
+  }
+
+  it("answers a check-in before filing the ended month away", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(AUGUST));
+    const { tabs, store, release } = heldBoard();
+    const done = await store.add("Ada", "");
+    await store.update(done.id, { status: "resolved" });
+    await store.settled();
+
+    vi.setSystemTime(new Date(SEPTEMBER));
+    // The visitor has their answer while the filing is still stuck on Google.
+    await store.add("Bo", "");
+    expect(tabs.rows("August 2026")).toEqual([]);
+
+    release();
+    await store.settled();
+    expect(tabs.rows("August 2026").map((entry) => entry.name)).toEqual([
+      "Ada",
+    ]);
+    const left = await store.list();
+    expect(left.map((entry) => entry.name)).toEqual(["Bo"]);
+  });
+
+  it("keeps a check-in made during the filing behind it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(AUGUST));
+    const { store, release } = heldBoard();
+    const done = await store.add("Ada", "");
+    await store.update(done.id, { status: "resolved" });
+    await store.settled();
+
+    vi.setSystemTime(new Date(SEPTEMBER));
+    await store.add("Bo", "");
+    // Filing is still in flight; this must queue behind it rather than build
+    // on the board it is about to trim.
+    const during = store.add("Cai", "");
+    release();
+    await during;
+    await store.settled();
+
+    const left = await store.list();
+    expect(left.map((entry) => entry.name)).toEqual(["Bo", "Cai"]);
+  });
+
+  it("files the months side by side rather than one after another", async () => {
+    const live = fakeSheet(
+      toSheetValues([
+        makeEntry({ id: 1, createdAt: "2026-07-15T12:00:00.000Z" }),
+        makeEntry({ id: 2, createdAt: AUGUST }),
+        makeEntry({ id: 3, createdAt: SEPTEMBER }),
+      ]),
+    );
+    let open = 0;
+    let mostAtOnce = 0;
+    const store = createStore(live.transport, {
+      openTab: () => ({
+        async read() {
+          open += 1;
+          mostAtOnce = Math.max(mostAtOnce, open);
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          open -= 1;
+          return [];
+        },
+        async write() {},
+      }),
+    });
+
+    const result = await store.sync();
+    expect(result.months).toEqual([
+      "July 2026",
+      "August 2026",
+      "September 2026",
+    ]);
+    expect(mostAtOnce).toBe(3);
   });
 
   it("does not file an unfinished entry away, however old it is", async () => {
@@ -222,6 +323,7 @@ describe("a store with month tabs", () => {
     // The rollover files Ada away; a later save must not wipe her row.
     vi.setSystemTime(new Date(SEPTEMBER));
     await store.add("Cai", "");
+    await store.settled();
     await store.sync();
 
     expect(tabs.rows("August 2026").map((entry) => entry.name)).toEqual([
