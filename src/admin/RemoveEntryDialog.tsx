@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useModalDialog } from "../hooks/useModalDialog";
 import type { AdminEntry } from "../shared/types";
 
 const ACTION = "narrow:w-full";
@@ -16,15 +16,7 @@ export default function RemoveEntryDialog({
   onCancel,
   onConfirm,
 }: Props) {
-  const ref = useRef<HTMLDialogElement>(null);
-
-  // <dialog> needs showModal() to get the focus trap and Esc handling.
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (entry && !dialog.open) dialog.showModal();
-    if (!entry && dialog.open) dialog.close();
-  }, [entry]);
+  const ref = useModalDialog(entry !== null);
 
   return (
     <dialog ref={ref} className="modal-shell" onClose={onCancel}>

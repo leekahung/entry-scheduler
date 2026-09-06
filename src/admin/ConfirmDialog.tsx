@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useModalDialog } from "../hooks/useModalDialog";
 
 type Props = {
   open: boolean;
@@ -12,10 +12,7 @@ type Props = {
   onCancel: () => void;
 };
 
-/**
- * Confirmation step for an action that throws work away.
- * Uses <dialog> with showModal() for the focus trap and Esc handling.
- */
+/** Confirmation step for an action that throws work away. */
 export default function ConfirmDialog({
   open,
   title,
@@ -25,14 +22,7 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: Props) {
-  const ref = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+  const ref = useModalDialog(open);
 
   return (
     <dialog ref={ref} className="modal-shell" onClose={onCancel}>

@@ -9,6 +9,7 @@ import {
 import { MAX_NAME, MAX_NOTE } from "../../server/shared/limits";
 import { PRIORITIES, PRIORITY_LABEL, type Priority } from "../shared/types";
 import ConfirmDialog from "./ConfirmDialog";
+import { useDiscardGuard } from "../hooks/useDiscardGuard";
 import { CodeSelect, DobField, PhoneField } from "../shared/fields";
 import { fromLocalInput } from "../shared/time";
 import type { NewBooking } from "../hooks/useEntries";
@@ -33,7 +34,6 @@ type Props = {
 export default function BookingForm({ onSubmit, onCancel }: Props) {
   const [draft, setDraft] = useState(BLANK);
   const [saving, setSaving] = useState(false);
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
   const set = <K extends keyof typeof BLANK>(
     key: K,
     value: (typeof BLANK)[K],
@@ -43,7 +43,7 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
     (key) => draft[key] !== BLANK[key],
   );
 
-  const handleCancel = () => (dirty ? setConfirmingCancel(true) : onCancel());
+  const guard = useDiscardGuard(dirty, onCancel);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -159,7 +159,7 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
         <button
           type="button"
           className="border-border bg-surface text-text card-mode:flex-1"
-          onClick={handleCancel}
+          onClick={guard.handleCancel}
         >
           Cancel
         </button>
@@ -173,16 +173,13 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
       </div>
 
       <ConfirmDialog
-        open={confirmingCancel}
+        open={guard.confirming}
         title="Discard this booking?"
         body="Nobody has been added to the queue yet. Closing now throws away what you have typed."
         confirmLabel="Discard booking"
         cancelLabel="Keep editing"
-        onConfirm={() => {
-          setConfirmingCancel(false);
-          onCancel();
-        }}
-        onCancel={() => setConfirmingCancel(false)}
+        onConfirm={guard.discard}
+        onCancel={guard.keepEditing}
       />
     </form>
   );

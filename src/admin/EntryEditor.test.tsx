@@ -17,10 +17,12 @@ function Editor({
   entry,
   helper = "",
   onSave,
+  onCancel = () => {},
 }: {
   entry: AdminEntry;
   helper?: string;
   onSave: (details: EntryChanges) => Promise<boolean>;
+  onCancel?: () => void;
 }) {
   const [draft, setDraft] = useState(() => seedDraft(entry, helper));
   const [initial] = useState(() => seedDraft(entry));
@@ -31,7 +33,7 @@ function Editor({
       initial={initial}
       onChange={setDraft}
       onSave={onSave}
-      onCancel={() => {}}
+      onCancel={onCancel}
     />
   );
 }
@@ -111,5 +113,65 @@ describe("what the editor sends on save", () => {
     await userEvent.clear(screen.getByLabelText(/^time \(hours/i));
     await clickSave();
     expect(onSave).toHaveBeenCalledWith({ timeSpent: 0 });
+  });
+});
+
+describe("closing an editor with edits in it", () => {
+  const clickCancel = () =>
+    userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  // A closed <dialog> still renders its markup, so `open` is the only honest
+  // way to ask whether the question is on screen.
+  const asking = () =>
+    (screen.getByRole("dialog", { hidden: true }) as HTMLDialogElement).open;
+
+  it("closes straight away when nothing has been touched", async () => {
+    const onCancel = vi.fn();
+    render(
+      <Editor entry={makeAdminEntry()} onSave={save()} onCancel={onCancel} />,
+    );
+    await clickCancel();
+
+    expect(onCancel).toHaveBeenCalled();
+    expect(asking()).toBe(false);
+  });
+
+  // The draft is the only copy of what was typed.
+  it("asks before throwing edits away", async () => {
+    const onCancel = vi.fn();
+    render(
+      <Editor entry={makeAdminEntry()} onSave={save()} onCancel={onCancel} />,
+    );
+    await userEvent.type(screen.getByLabelText(/phone/i), "5035550142");
+    await clickCancel();
+
+    expect(asking()).toBe(true);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("stays open when the question is declined", async () => {
+    const onCancel = vi.fn();
+    render(
+      <Editor entry={makeAdminEntry()} onSave={save()} onCancel={onCancel} />,
+    );
+    await userEvent.type(screen.getByLabelText(/phone/i), "5035550142");
+    await clickCancel();
+    await userEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+
+    expect(asking()).toBe(false);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("closes once the discard is confirmed", async () => {
+    const onCancel = vi.fn();
+    render(
+      <Editor entry={makeAdminEntry()} onSave={save()} onCancel={onCancel} />,
+    );
+    await userEvent.type(screen.getByLabelText(/phone/i), "5035550142");
+    await clickCancel();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Discard changes" }),
+    );
+
+    expect(onCancel).toHaveBeenCalled();
   });
 });

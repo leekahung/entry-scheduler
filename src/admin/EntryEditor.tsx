@@ -19,6 +19,7 @@ import {
   type Priority,
 } from "../shared/types";
 import ConfirmDialog from "./ConfirmDialog";
+import { useDiscardGuard } from "../hooks/useDiscardGuard";
 import { CodeSelect, DobField, PhoneField } from "../shared/fields";
 import { fromLocalInput } from "../shared/time";
 import type { EntryChanges } from "../hooks/useEntries";
@@ -52,7 +53,6 @@ export default function EntryEditor({
   onCancel,
 }: Props) {
   const [saving, setSaving] = useState(false);
-  const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   const set = <K extends keyof EditorDraft>(key: K, value: EditorDraft[K]) =>
     onChange({ ...draft, [key]: value });
@@ -61,7 +61,7 @@ export default function EntryEditor({
     (key) => draft[key] !== initial[key],
   );
 
-  const handleCancel = () => (dirty ? setConfirmingCancel(true) : onCancel());
+  const guard = useDiscardGuard(dirty, onCancel);
 
   async function handleSave() {
     setSaving(true);
@@ -269,7 +269,7 @@ export default function EntryEditor({
         <button
           type="button"
           className="border-border bg-surface text-text card-mode:flex-1"
-          onClick={handleCancel}
+          onClick={guard.handleCancel}
         >
           Cancel
         </button>
@@ -286,16 +286,13 @@ export default function EntryEditor({
       </div>
 
       <ConfirmDialog
-        open={confirmingCancel}
+        open={guard.confirming}
         title="Discard your changes?"
         body={`The edits to #${entry.id} have not been saved yet. Closing now throws them away.`}
         confirmLabel="Discard changes"
         cancelLabel="Keep editing"
-        onConfirm={() => {
-          setConfirmingCancel(false);
-          onCancel();
-        }}
-        onCancel={() => setConfirmingCancel(false)}
+        onConfirm={guard.discard}
+        onCancel={guard.keepEditing}
       />
     </>
   );
