@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import path from "node:path";
@@ -31,6 +32,10 @@ export function createApp(
 ) {
   const app = express();
   app.disable("x-powered-by");
+  // Before everything it might compress. The board is polled every five
+  // seconds by every screen in the room, and its JSON is repetitive enough to
+  // go out at a sixteenth of the size; the bundle a kiosk loads is a third.
+  app.use(compression());
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -104,6 +109,21 @@ export function createApp(
     noteFailure: guards.noteFailure,
     recentFailures: guards.recentFailures,
   };
+
+  // Revalidate rather than guess. Every answer already carries an ETag, but
+  // without a directive the browser applies its own heuristic and asks for the
+  // board in full every five seconds; told to revalidate, it sends the tag it
+  // holds and an unchanged board comes back as a bodyless 304.
+  //
+  // `private` as well as `no-cache`: on its own, no-cache lets a shared cache
+  // *store* the answer so long as it revalidates before reuse, and these
+  // answers carry visitors' names, what they came in for, and the exports. The
+  // board is expected to run over plain HTTP on a venue LAN, which is exactly
+  // where something in the middle can keep a copy.
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Cache-Control", "private, no-cache");
+    next();
+  });
 
   app.use("/api/auth", authRoutes(context));
   app.use("/api/admin/staff", staffRoutes(context));

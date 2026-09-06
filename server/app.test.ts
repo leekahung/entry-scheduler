@@ -92,6 +92,34 @@ describe("admin gate", () => {
     const openApp = createApp(emptyStore(), "");
     expect((await request(openApp).get("/api/entries.csv")).status).toBe(401);
   });
+
+  it("refuses the passcode outright in production, however right it is", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const deployed = createApp(emptyStore(), PASSCODE);
+      const res = await asAdmin(request(deployed).get("/api/entries.csv"));
+      // Not 401, which would read as "wrong passcode" and invite another
+      // guess: this deployment has no passcode to get right.
+      expect(res.status).toBe(501);
+      expect(res.body.error).toMatch(/Google sign-in/);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it("still lets the passcode work outside production", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
+    try {
+      const local = createApp(emptyStore(), PASSCODE);
+      expect(
+        (await asAdmin(request(local).get("/api/entries.csv"))).status,
+      ).toBe(200);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
 });
 
 describe("serving the built frontend", () => {
@@ -232,6 +260,13 @@ describe("hardening", () => {
     expect(res.text).not.toContain(".ts:");
   });
 
+  it("keeps API answers out of any cache but the reader's own", async () => {
+    const res = await request(server).get("/api/queue");
+    // `no-cache` alone still permits a shared cache to store the response and
+    // revalidate it; these carry visitors' names.
+    expect(res.headers["cache-control"]).toBe("private, no-cache");
+  });
+
   it("sets framing and sniffing protections, and hides the server stack", async () => {
     const res = await request(server).get("/api/queue");
     expect(res.headers["content-security-policy"]).toContain(
@@ -306,6 +341,51 @@ describe("behind an unconfigured proxy", () => {
       "ADMIN_EMAILS",
     ]) {
       delete process.env[key];
+    }
+  });
+
+  it("keeps every filed month to owners, though staff may take the board", async () => {
+    const SECRET = "a-long-signing-secret-of-adequate-length";
+    Object.assign(process.env, {
+      GOOGLE_OAUTH_CLIENT_ID: "client-123",
+      GOOGLE_OAUTH_CLIENT_SECRET: "secret-123",
+      SESSION_SECRET: SECRET,
+      ADMIN_EMAILS: "boss@clinic.org",
+    });
+    try {
+      const staff = createStaffStore(fakeSheet().transport);
+      // A staff member who is not on ADMIN_EMAILS, so the console knows them
+      // but not as an owner.
+      await staff.add("helper@clinic.org", "staff", "boss@clinic.org");
+      const app = createApp(emptyStore(), PASSCODE, undefined, false, {
+        staff,
+      });
+      const signedIn = (email: string) => (req: request.Test) =>
+        req.set("cookie", `${SESSION_COOKIE}=${signSession(email, SECRET)}`);
+
+      // Not on the owner list, so this session is staff.
+      const asStaff = signedIn("helper@clinic.org");
+      const asOwner = signedIn("boss@clinic.org");
+
+      // The board is what they are already looking at.
+      expect((await asStaff(request(app).get("/api/entries.csv"))).status).toBe(
+        200,
+      );
+      // Every name, date of birth and note the clinic has ever filed is not.
+      const refused = await asStaff(request(app).get("/api/entries.xlsx"));
+      expect(refused.status).toBe(403);
+      expect(
+        (await asOwner(request(app).get("/api/entries.xlsx"))).status,
+      ).toBe(200);
+    } finally {
+      for (const key of [
+        "GOOGLE_OAUTH_CLIENT_ID",
+        "GOOGLE_OAUTH_CLIENT_SECRET",
+        "SESSION_SECRET",
+        "ADMIN_EMAILS",
+      ]) {
+        delete process.env[key];
+      }
     }
   });
 });
