@@ -52,6 +52,11 @@ so a reload or a locked phone comes back to it.
 straight away, ready for the next person. It does not remove anyone from the
 queue — only staff can do that.
 
+**If checking in fails** the form stays exactly as it was, filled in, and a
+message says so at the top of the screen — see [Saying what
+happened](#saying-what-happened). Nobody has to type their name a second time
+because the network dropped.
+
 **Currently waiting** lists everyone in line as a number, a shortened name
 ("Ada L."), and a status. The shortening happens on the server, so the only
 full name this screen ever holds is the reader's own.
@@ -98,7 +103,7 @@ the 5-second poll cannot overwrite half-typed changes.
 **Header actions** — **Book someone in** (a form for a walk-up who cannot work
 the screen, or for an appointment: leave the time blank for a walk-up),
 **Open spreadsheet** (owners only, and only where Sheets is configured),
-**Download spreadsheet**, **Staff access** (owners only — a button that opens
+**Download current list**, **Download all months**, **Staff access** (owners only — a button that opens
 and closes the access list), and **Sign out**, which asks first: on a shared
 console, signing out means finding whoever was signed in to get back in. Beside the queue tabs, owners
 also get **Sync List**, which copies the board into a tab per month it spans
@@ -106,15 +111,62 @@ without taking anything off it.
 Months are filed away on their own — see [Month tabs](#month-tabs) — so this is
 only for taking a record early.
 
+Every action says how it went — see [Saying what
+happened](#saying-what-happened).
+
 A banner warns when failed sign-in attempts pile up, so staff can see someone
 guessing at the passcode. If the server stops accepting the session — a
 restart with a different passcode, say — the console drops back to the sign-in
 form rather than retrying, which would spend the rate-limit budget and lock
 staff out of signing back in.
 
+## Saying what happened
+
+Both screens report their own work the same way: a short message at the top,
+which clears itself. Nothing a person does is silent, and nothing that fails is
+silent either.
+
+- **While it runs** — "Saving #12…", "Checking you in…". Only if the request
+  takes longer than 400ms: most land well inside that, and a "Saving…" that
+  flashes for a tenth of a second reads as a glitch rather than as progress.
+- **When it lands** — "Helping #12.", "You're checked in. You are #3.", "Synced
+  August 2026 and September 2026." Gone after 3.5 seconds.
+- **When it fails** — the message stays 7 seconds, twice as long: it carries
+  more to read, and it is the one somebody may have looked away from. Either
+  can be dismissed outright.
+
+Failures are announced to a screen reader assertively and everything else
+politely, through two live regions that are always in the document — a region
+that appears along with its first message may not be announced at all.
+
+On the console the messages sit top left, clear of the header's own buttons; on
+the kiosk they are centred and larger, for a screen read across a room.
+
+**What a failure says** depends on what went wrong, because "Something went
+wrong" helps nobody:
+
+| What happened | What it says |
+| ------------- | ------------ |
+| The server named the problem (400, 403, 429, 501) | its own words — "Name is required", "Only an owner can do that" |
+| The server broke (500) | "The server couldn't save that. Nothing was changed." |
+| The row is already gone (404) | "#12 is no longer on the board — someone else may have removed it." |
+| The session ended (401) | "Your session has ended. Sign in again." |
+| The server was never reached | "Can't reach the server. Nothing was saved." |
+
+The 404 case is worth the special wording: two staff work one queue, so a row
+being removed while somebody else is acting on it is ordinary, not a bug. The
+500 case is the opposite — the server answers every one of them with
+"Something went wrong", which tells a visitor nothing they did not already
+know, so the console and the kiosk supply their own words there.
+
+Standing state stays a banner rather than a message that clears: a server that
+cannot be reached, a month left unclosed, someone guessing at the passcode.
+Those are conditions, not events.
+
 ## Development
 
-Node 20.12 or newer (the dev server uses `--env-file-if-exists`).
+Node 20.15 or newer — the dev server uses `--env-file-if-exists`, and the
+workbook export uses `zlib.crc32` to build its zip.
 
 ```bash
 cp .env.example .env      # then set ADMIN_PASSCODE and GOOGLE_SHEETS_ID
@@ -136,6 +188,9 @@ The server refuses to start when its configuration would be unsafe or useless:
 - without `ADMIN_PASSCODE` — or with one under 12 characters — **unless**
   Google sign-in is configured, in which case the passcode is neither needed
   nor read;
+- in production (`NODE_ENV=production`, which both `npm start` and the
+  Dockerfile set) without Google sign-in, whatever the passcode says: see
+  [Who may use the console](#who-may-use-the-console);
 - with `SESSION_SECRET` shorter than 32 characters, because that key signs the
   staff session cookie;
 - with `ALLOW_REMOTE_ADMIN=true` but no Google sign-in configured, which would
@@ -153,6 +208,18 @@ network URL it prints.
 
 Before opening a change: `npm test`, `npm run typecheck`, and `npm run lint`
 (`npm run lint:fix` applies what Biome can fix on its own).
+
+**A pre-commit hook does the first of those for you.** `npm install` points
+`core.hooksPath` at `.githooks/`, so a fresh clone picks it up without anyone
+having to be told; there is no dependency behind it.
+
+It **applies** the formatting and the lint rules Biome can fix, rather than
+refusing the commit over them, and re-stages the result so the fix lands in the
+commit being made. Only files already staged are touched — a fixer let loose on
+the whole working tree would sweep unrelated edits into somebody's commit.
+
+The typecheck and the suite have no fix mode, so those two do still stop the
+commit. `git commit --no-verify` skips the lot, for the times you mean to.
 
 ## Deploying
 
@@ -182,13 +249,14 @@ Set these on the host:
 
 | Variable         | Notes                                                    |
 | ---------------- | -------------------------------------------------------- |
-| `ADMIN_PASSCODE` | Required unless Google sign-in is configured, and at least 12 characters. |
+| `NODE_ENV` | Set to `production` by both `npm start` and the Dockerfile. It is what makes the server refuse the shared passcode, so don't unset it on a deployment. |
+| `ADMIN_PASSCODE` | Development only — refused in production. Required in dev unless Google sign-in is configured, and at least 12 characters. |
 | `PORT`           | Most hosts set this for you; defaults to 3001.           |
 | `GOOGLE_SHEETS_ID` | Required. The queue is stored here; the id from the sheet URL. |
 | `GOOGLE_SHEETS_TAB` | Optional. Tab to write, defaults to `Sheet1`, the name Google gives the first tab of a new spreadsheet. |
 | `GOOGLE_STAFF_TAB` | Optional. Tab holding the staff list, defaults to `Staff`. |
 | `GOOGLE_STAFF_SHEETS_ID` | Optional. Keeps the staff list in its own spreadsheet, shared only with owners. Defaults to the queue's spreadsheet, where anyone who can open the file can read it. |
-| `TZ`             | The clinic's zone, e.g. `America/Los_Angeles`. Months are cut in local time, and a host left on UTC files a late evening into the next month. |
+| `TZ`             | Optional. The clinic's zone, defaulting to `America/Los_Angeles`. Months and stamps are cut in local time, so a clinic in another zone sets this; a host that names none is pinned to Pacific rather than left on the container's UTC. |
 | `GOOGLE_OAUTH_CLIENT_ID` | Turns on Google sign-in for staff. With it set, the passcode is no longer accepted. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | From the same OAuth client. |
 | `SESSION_SECRET` | Signs the staff session cookie. At least 32 random characters. |
@@ -267,10 +335,27 @@ key in `GOOGLE_SA_KEY`.
 
 ## Who may use the console
 
-By default the console is behind one shared passcode. Set the four
-`GOOGLE_OAUTH_*` / `SESSION_SECRET` / `ADMIN_EMAILS` variables and staff sign in
-with their own Google account instead; the passcode stops being accepted the
-moment those are present.
+**A deployment signs staff in with Google. There is no other way in.**
+
+The shared passcode is a development convenience and nothing more. It is one
+credential with no identity behind it, nothing to revoke per person, and it
+travels as a plain header — so it is refused outright in production. Two locks,
+either of which is enough:
+
+- the server **will not start** with `NODE_ENV=production` unless Google
+  sign-in is configured, so a deployment that lost its OAuth settings fails
+  loudly rather than quietly dropping to a shared secret;
+- `requireAdmin` **refuses the passcode** whenever `NODE_ENV=production`,
+  whatever the header says, answering `501` rather than `401` — there is no
+  passcode here to get right, so nothing invites another guess.
+
+Both `npm start` and the Dockerfile set `NODE_ENV=production`, so this is on
+wherever the app is actually deployed. Locally, `npm run dev` still takes the
+passcode.
+
+Set the four `GOOGLE_OAUTH_*` / `SESSION_SECRET` / `ADMIN_EMAILS` variables and
+staff sign in with their own Google account; the passcode stops being accepted
+the moment those are present, in any environment.
 
 Access has two levels:
 
@@ -344,6 +429,12 @@ Two consequences worth knowing:
 
 - **The board is rewritten in full on every change.** A column added by hand
   is overwritten; the month tabs are where finished work is kept.
+- **The month tabs are read and written in batches.** Google counts a batched
+  call as one request against the per-minute quota however many ranges it
+  carries, so filing a board that spans a year costs a handful of calls rather
+  than one per month. A month tab that does not exist yet is never named in a
+  batched read, since one unparseable range can fail the whole call; it is
+  created and written instead.
 - Reads are cached for five seconds. An edit made directly in Google Sheets
   shows up in the console within that, not instantly. Polls that arrive while
   a read is already on its way share it rather than each starting one, so a
@@ -382,15 +473,9 @@ clinic's confidentiality policy before switching it on.
 
 Two other things to get right before real use:
 
-- **Serve over HTTPS.** On a passcode deployment the credential travels as a
-  plaintext header; with Google sign-in the session cookie does. Either way,
-  plain HTTP hands it to anyone on the network path. Every managed host
-  terminates TLS for you; just don't skip it.
-- **Prefer Google sign-in to the shared passcode.** Once deployed the URL is
-  publicly reachable, and a passcode is one secret shared by everyone with no
-  way to revoke one person. Failed admin requests are rate limited — 30 per 15
-  minutes per address, successful ones not counted — but that only slows
-  guessing down.
+- **Serve over HTTPS.** The staff session cookie travels with every admin
+  request, and plain HTTP hands it to anyone on the network path. Every managed
+  host terminates TLS for you; just don't skip it.
 - **Set `TRUST_PROXY` when, and only when, something terminates in front of
   you.** Behind a proxy the app otherwise sees the proxy's own private address
   as the client and cannot tell visitors apart, which both defeats the
@@ -453,17 +538,18 @@ longer has: saving again merges rather than replacing, matching on the entry
 number together with its sign-in time, since numbering used to restart and one
 month can hold two different people as #3.
 
-Months are cut in the server's local time, so set `TZ` to the clinic's zone.
-On a host left at UTC an entry taken on the evening of the 31st is filed a
-month ahead of when it was really taken.
+Months are cut in the server's local time. A container is on UTC unless it is
+told otherwise, and an entry taken on the evening of the 31st would then be
+filed a month ahead of when it was really taken — so the server pins itself to
+`America/Los_Angeles` when nothing sets `TZ`. A clinic in another zone sets
+`TZ`, which is honoured as it always was.
 
 ## Who can do what
 
 Permissions are enforced on the server, not just hidden in the UI — the admin
 routes reject any request without a valid staff session (a Google sign-in
-cookie, or the `x-admin-passcode` header where the passcode is still in use),
-so a visitor cannot change a status or pull the export by calling the API
-directly.
+cookie, or — in development only — the `x-admin-passcode` header), so a visitor
+cannot change a status or pull the export by calling the API directly.
 
 | Action                                    | Visitor | Staff | Owner |
 | ----------------------------------------- | ------- | ----- | ----- |
@@ -478,7 +564,7 @@ directly.
 | Change a status / flag as helped          | ❌      | ✅    | ✅    |
 | Write or read notes                       | ❌      | ✅    | ✅    |
 | See timestamps and who helped             | ❌      | ✅    | ✅    |
-| Export CSV                                | ❌      | ✅    | ✅    |
+| Download the current list or all months   | ❌      | ✅    | ✅    |
 | Remove an entry                           | ❌      | ✅    | ✅    |
 | Sync the board to its month tabs          | ❌      | ❌    | ✅    |
 | Open the spreadsheet itself               | ❌      | ❌    | ✅    |
@@ -493,9 +579,35 @@ with it.
 Nobody can take themselves out of the line: a visitor who leaves is removed by
 staff, so the log still records that they came in.
 
-## CSV export
+## Exports
 
-The **Download spreadsheet** button downloads `entries-YYYY-MM-DD.csv` laid out
+Two buttons, for two different jobs. **Download current list (CSV)** takes the
+board as `current-list-YYYY-MM-DD.csv`, to paste into the log. **Download all
+months (Excel)** takes the whole record as `all-months-YYYY-MM-DD.xlsx`, a tab
+per month, laid out the same way.
+
+They are named for what they hold rather than for their format: "spreadsheet"
+and "workbook" are the same word to most people, and the difference that
+matters to staff is whether the months already filed away are in it.
+
+All months is the one that reaches those: they are tabs of their own and no
+longer on the board, so the CSV cannot see them. It
+reads every month tab the spreadsheet holds, and where a month is both filed
+and still on the board the board's copy wins, being the fresher of the two.
+
+Nothing is written: it is a read of the board and the month tabs, off the write
+queue, so a download never holds up a check-in. However many months it spans,
+it costs two Sheets calls — the tab list, and one batched read of every month
+at once.
+
+The Excel file is built by `server/sheet/xlsx.ts` — an `.xlsx` is a zip of a few
+XML parts, and text cells need nothing more than that, so there is no
+dependency behind it. Cells go in as inline strings, which a spreadsheet never
+evaluates, so a name beginning `=` needs none of the quoting the CSV has to do.
+
+### CSV export
+
+The **Download current list** button downloads `current-list-YYYY-MM-DD.csv` laid out
 as the **SIGN IN LOG SPREADSHEET** tab of `docs/Legal Triage Ticketing System.xlsx`, so
 a day's rows paste straight in:
 
@@ -522,6 +634,7 @@ formulas.
 | Command             | Does                                          |
 | ------------------- | --------------------------------------------- |
 | `npm run boot`      | `npm install`, then `npm run dev`             |
+| `npm install`       | Also enables the pre-commit hook in `.githooks/` |
 | `npm run dev`       | API (:3001) and web UI (:5173) together       |
 | `npm test`          | Vitest suite                                  |
 | `npm run typecheck` | TypeScript, no emit                           |
@@ -537,12 +650,34 @@ formulas.
 - **Sign out** clears the staff session for that tab. With Google sign-in an
   owner can revoke one person from the Staff access panel — behind a
   confirmation, since it locks them out mid-shift — and it takes effect within
-  about 30 seconds. With the shared passcode there is nothing to revoke
-  per person: change `ADMIN_PASSCODE` and restart, which locks out everyone.
+  about 30 seconds. (In development, where the shared passcode still works,
+  there is nothing to revoke per person: change `ADMIN_PASSCODE` and restart,
+  which locks out everyone.)
 - "Helped by" is the signed-in identity where Google sign-in is on, and a name
   typed on the device where it is not.
 - Both screens poll every 5 seconds rather than using websockets, and only
   while the tab is on screen — a phone left in a pocket stops polling and picks
-  up again the moment it is looked at.
+  up again the moment it is looked at. The console's failed sign-in count is
+  asked for every 30 seconds instead: it rarely changes, and polling it with
+  the queue doubled every console's requests.
+- Responses are compressed. The board's JSON is repetitive enough to go out at
+  a sixteenth of its size, which matters when every screen in the room asks for
+  it every five seconds. Small answers are left alone: below about 1KB the
+  saving does not pay for itself, so a quiet waiting room's board goes out as
+  it is.
+- API answers carry `Cache-Control: no-cache` alongside their ETag, so a poll
+  that finds nothing changed comes back as a bodyless `304` rather than the
+  board in full. Without the directive the browser applies its own heuristic
+  and asks for everything every time.
+- **The pages ask not to be indexed.** The visitor screen carries names and why
+  people are here, and a deployment is reachable without signing in, so
+  `index.html` sets `robots: noindex, nofollow`. Nothing here is meant to be
+  found by search.
+- `public/` holds the icons: `favicon.svg`, and an `apple-touch-icon.png` for a
+  tablet added to a home screen, which iOS will not take as SVG. The page also
+  sets `theme-color` and the web-app meta tags, so a kiosk runs full screen
+  rather than inside a browser with a URL bar.
+- The staff console is a chunk of its own, fetched when someone opens
+  `#/admin`. A visitor checking in never downloads it.
 - Serve over HTTPS before using this anywhere beyond a trusted local network —
-  the passcode is sent as a plain header.
+  the staff session cookie is sent with every admin request.
