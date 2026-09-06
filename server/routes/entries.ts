@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { toCsv } from "../sheet/csv.js";
+import { toCsv, toRows } from "../sheet/csv.js";
+import { toXlsx } from "../sheet/xlsx.js";
+import { currentMonth, monthTab } from "../sheet/archive.js";
 import { isDue, queueOrder } from "../domain/entry.js";
 import { wrap } from "../lib/http.js";
 import {
@@ -120,12 +122,44 @@ export function entryRoutes({
       const stamp = new Date().toISOString().slice(0, 10);
       // attachment() sets its own Content-Type from the extension, so it has to
       // come first or it drops the charset and non-ASCII names decode wrongly.
-      res.attachment(`entries-${stamp}.csv`);
+      res.attachment(`current-list-${stamp}.csv`);
       res.type("text/csv; charset=utf-8");
       // Excel ignores the charset header when a downloaded .csv is opened by
       // double-click and falls back to the system codepage, which mangles any
       // non-ASCII name. The BOM is what tells it the file is UTF-8.
       res.send(`\uFEFF${toCsv(entries)}`);
+    }),
+  );
+
+  // The whole record as one workbook, a tab per month, laid out like the CSV.
+  // The CSV is still the current list to paste into the log; this is the file
+  // to keep.
+  //
+  // Owners only, unlike the CSV. The CSV holds the board, which every staff
+  // member is already looking at; this holds every name, date of birth, phone
+  // number and note the clinic has ever filed. Copying the board into its
+  // month tabs is an owner's, so reading them all back has to be too.
+  routes.get(
+    "/entries.xlsx",
+    adminLimiter,
+    requireAdmin,
+    requireOwnerOfRecords,
+    wrap(async (_req, res) => {
+      const months = await store.months();
+      const stamp = new Date().toISOString().slice(0, 10);
+      // A workbook with no sheets at all is one Excel refuses to open, so an
+      // empty record downloads as this month's headings and nothing under them.
+      const sheets = months.length
+        ? months
+        : [{ tab: monthTab(currentMonth()), entries: [] }];
+      const book = toXlsx(
+        sheets.map(({ tab, entries }) => ({
+          name: tab,
+          rows: toRows(entries),
+        })),
+      );
+      res.attachment(`all-months-${stamp}.xlsx`);
+      res.send(book);
     }),
   );
 

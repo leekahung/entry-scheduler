@@ -2,13 +2,17 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import request from "supertest";
 import { createApp } from "../app.js";
-import { fakeSheet } from "../sheet/sheet.fixture.js";
-import {
-  createStore,
-  type SheetTransport,
-  type Store,
-} from "../sheet/store.js";
+import { fakeSheet, fakeTabs } from "../sheet/sheet.fixture.js";
+import { createStore, type Store } from "../sheet/store.js";
 import { asAdmin, emptyStore, PASSCODE } from "./routes.fixture.js";
+
+/** Keeps supertest from decoding a binary body as text. */
+const asBinary = (req: request.Test) =>
+  req.buffer(true).parse((res, callback) => {
+    const chunks: Buffer[] = [];
+    res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    res.on("end", () => callback(null, Buffer.concat(chunks)));
+  });
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
@@ -46,15 +50,9 @@ describe("csv export", () => {
 
 describe("month tabs", () => {
   it("reports the months it saved and leaves the board alone", async () => {
-    const tabs = new Map<string, SheetTransport>();
+    const tabs = fakeTabs();
     const tabbed = createApp(
-      createStore(fakeSheet().transport, {
-        openTab(tab) {
-          const sheet = tabs.get(tab) ?? fakeSheet().transport;
-          tabs.set(tab, sheet);
-          return sheet;
-        },
-      }),
+      createStore(fakeSheet().transport, { tabs }),
       PASSCODE,
     );
     await request(tabbed).post("/api/entries").send({ name: "Ada" });
@@ -289,6 +287,33 @@ describe("admin actions", () => {
     expect(lines[1]).toContain('"Ada"');
     expect(lines[1]).toContain('"needs a laptop"');
     expect(lines[2]).toContain('"Grace"');
+  });
+
+  it("downloads the record as a workbook, a tab per month", async () => {
+    await request(server).post("/api/entries").send({ name: "Ada" });
+
+    const res = await asAdmin(
+      asBinary(request(server).get("/api/entries.xlsx")),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("all-months");
+    // "PK": it is a zip, which is all an .xlsx is.
+    expect(res.body.subarray(0, 2).toString()).toBe("PK");
+    expect(res.body.length).toBeGreaterThan(0);
+  });
+
+  it("refuses the workbook without a passcode, as it holds every name", async () => {
+    const res = await request(server).get("/api/entries.xlsx");
+    expect(res.status).toBe(401);
+  });
+
+  it("writes a workbook with a sheet in it even when nothing is in the record", async () => {
+    const res = await asBinary(
+      asAdmin(request(server).get("/api/entries.xlsx")),
+    );
+    // Excel refuses a workbook with no sheets at all.
+    expect(res.status).toBe(200);
+    expect(res.body.subarray(0, 2).toString()).toBe("PK");
   });
 });
 
