@@ -3,6 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The board carries visitors' names and why they are here, and the
+         deployment is reachable without signing in, so it must not be
+         crawled. Nothing here is meant to be found by search. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- iOS ignores SVG here, so the home-screen icon is its own PNG. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- A tablet in the waiting room is added to the home screen and run
+         full screen; these are what make it look like an app rather than a
+         browser with a URL bar. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Still the apple- prefixed one too: iOS Safari reads only that. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Check in" />
+    <meta name="theme-color" content="#0072b2" />
     <title>Entry Scheduler</title>
   </head>
   <body>
