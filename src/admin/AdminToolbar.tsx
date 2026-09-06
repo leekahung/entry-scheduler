@@ -11,6 +11,9 @@ type Props = {
   showBooking: boolean;
   onToggleBooking: () => void;
   onExport: () => void;
+  onExportWorkbook: () => void;
+  /** Whether this session may take the whole record, not just the board. */
+  owner: boolean;
   onSignOut: () => void;
   /** Whether this session may change who has access at all. */
   manageStaff: boolean;
@@ -28,6 +31,8 @@ export default function AdminToolbar({
   showBooking,
   onToggleBooking,
   onExport,
+  onExportWorkbook,
+  owner,
   onSignOut,
   manageStaff,
   showStaff,
@@ -68,15 +73,31 @@ export default function AdminToolbar({
             </a>
           )}
           {/* Up here so a record can be taken without opening Google Sheets —
-            and the only way to get one when Sheets is not configured. */}
+            and the only way to get one when Sheets is not configured. Named
+            for what each one holds: "spreadsheet" and "workbook" are the same
+            word to most people, and the difference that matters is whether
+            the months already filed away are in it. */}
           <button
             type="button"
             className="btn-secondary inline-flex items-center gap-2"
             onClick={onExport}
           >
             <DownloadIcon />
-            Download spreadsheet
+            Download current list (CSV)
           </button>
+          {/* The record to keep, rather than the list to paste: every month
+            the spreadsheet holds, each in its own tab. Owners only, and the
+            server enforces it — this holds far more than the board does. */}
+          {owner && (
+            <button
+              type="button"
+              className="btn-secondary inline-flex items-center gap-2"
+              onClick={onExportWorkbook}
+            >
+              <DownloadIcon />
+              Download all months (Excel)
+            </button>
+          )}
           {/* The same red-on-surface as Remove: not destructive to anyone
             else's data, but it ends the session and should read that way. */}
           <button

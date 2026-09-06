@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { QueueEntry, VisitorIntake } from "../shared/types";
+import type { JoinedEntry, QueueEntry, VisitorIntake } from "../shared/types";
 import { fetchQueue, joinQueue } from "../shared/api";
 import CheckInForm from "../kiosk/CheckInForm";
 import QueueBoard from "../kiosk/QueueBoard";
 import WaitingList from "../kiosk/WaitingList";
 import { formatAppointment } from "../shared/time";
 import { usePoll } from "../hooks/usePoll";
+import { ToastList, useToasts } from "../shared/toasts";
 
 const POLL_MS = 5000;
 
@@ -16,8 +17,11 @@ export default function UserPage() {
     return saved ? Number(saved) : null;
   });
   const [queue, setQueue] = useState<QueueEntry[]>([]);
-  const [error, setError] = useState("");
+  // What the server said when this device checked in, kept so the ticket can
+  // be drawn before the board has caught up — or when reading it fails.
+  const [justJoined, setJustJoined] = useState<JoinedEntry | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const toasts = useToasts();
   const [offline, setOffline] = useState(false);
   // The kiosk rests on a start screen; the form only appears once someone
   // says they are here to check in.
@@ -42,6 +46,18 @@ export default function UserPage() {
     fetchQueue()
       .then((entries) => {
         setQueue(entries);
+        // Only against a board that was read, so a failed poll leaves the
+        // ticket alone. A removed entry is absent rather than resolved, so
+        // nothing below notices it and the ticket outstays its visitor.
+        setJustJoined((held) =>
+          held &&
+          !entries.some(
+            (entry) =>
+              entry.id === held.id && entry.createdAt === held.createdAt,
+          )
+            ? null
+            : held,
+        );
         setOffline(false);
         setLoaded(true);
       })
@@ -51,40 +67,61 @@ export default function UserPage() {
   usePoll(loadQueue, POLL_MS);
 
   async function handleSubmit(name: string, intake: VisitorIntake) {
-    setError("");
     setSubmitting(true);
-    try {
-      const entry = await joinQueue(name, intake);
-      localStorage.setItem("entryId", String(entry.id));
-      localStorage.setItem("entryName", entry.name);
-      // Numbering restarts at #1 after staff clear the board, so the id alone
-      // can collide with a different person's later entry.
-      localStorage.setItem("entryCreatedAt", entry.createdAt);
-      // Kept when the entry keys are cleared: it records that this device has
-      // been used before, not who is currently checked in. Only backing out of
-      // the form clears it.
-      localStorage.setItem("checkedInBefore", "1");
-      setCheckedInBefore(true);
-      justCheckedIn.current = true;
-      setMyId(entry.id);
-      setMyName(entry.name);
-      setQueue(await fetchQueue());
-      // Last, and only once the refetch has landed: a blip here throws, and
-      // closing the form first would strand the visitor on the start screen
-      // with their entry made, no ticket, and the error unmounted with it.
-      // Unmounting the form is also what clears the fields it was holding.
-      setShowForm(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setSubmitting(false);
-    }
+    // The failure stays on screen until it is dismissed, and the form stays
+    // filled behind it: a visitor who could not check in has to be able to try
+    // again without typing their name a second time.
+    await toasts.track(
+      {
+        pending: "Checking you in\u2026",
+        success: (id: number) => `You're checked in. You are #${id}.`,
+        failure: {
+          fallback:
+            "We couldn't check you in. Please try again, or ask a member of staff.",
+          offline:
+            "Can't reach the server. Ask a member of staff to check you in.",
+        },
+      },
+      async () => {
+        // Everything after this line is presentation. The visitor is in the
+        // queue the moment this resolves, so nothing below may throw: telling
+        // someone their check-in failed when it did not is how they end up
+        // taking a second ticket.
+        const entry = await joinQueue(name, intake);
+        localStorage.setItem("entryId", String(entry.id));
+        localStorage.setItem("entryName", entry.name);
+        // Numbering restarts at #1 after staff clear the board, so the id alone
+        // can collide with a different person's later entry.
+        localStorage.setItem("entryCreatedAt", entry.createdAt);
+        // Kept when the entry keys are cleared: it records that this device has
+        // been used before, not who is currently checked in. Only backing out of
+        // the form clears it.
+        localStorage.setItem("checkedInBefore", "1");
+        setCheckedInBefore(true);
+        justCheckedIn.current = true;
+        setMyId(entry.id);
+        setMyName(entry.name);
+        // The ticket is drawn from this, so it appears whether or not the
+        // board can be read back. Deliberately not merged into `queue`: the
+        // public list holds shortened names, and this response carries the
+        // visitor's full one.
+        setJustJoined(entry);
+        setShowForm(false);
+        // Ordering is the server's to decide, so the board is read back for
+        // it — but a blip here is not a failed check-in. The five-second poll
+        // picks it up either way.
+        await fetchQueue()
+          .then(setQueue)
+          .catch(() => {});
+        return entry.id;
+      },
+    );
+    setSubmitting(false);
   }
 
   // Backing out returns the kiosk to its untouched state, greeting and all.
   function cancelForm() {
     setShowForm(false);
-    setError("");
     localStorage.removeItem("checkedInBefore");
     setCheckedInBefore(false);
   }
@@ -97,6 +134,9 @@ export default function UserPage() {
     localStorage.removeItem("entryCreatedAt");
     setMyId(null);
     setMyName("");
+    // Or the ticket would be drawn again from the entry this device used to
+    // hold, over the form the next visitor is already filling in.
+    setJustJoined(null);
   }, []);
 
   // Only people actually in the line. An appointment still hours out is in the
@@ -111,12 +151,16 @@ export default function UserPage() {
   const savedCreatedAt = localStorage.getItem("entryCreatedAt");
   // Being helped is the end of the visit: a resolved entry has left the line,
   // so its ticket goes too and the kiosk is ready for the next person.
-  const mine = queue.find(
-    (entry) =>
-      entry.status !== "resolved" &&
-      entry.id === myId &&
-      entry.createdAt === savedCreatedAt,
-  );
+  const onBoard = (entry: QueueEntry) =>
+    entry.status !== "resolved" &&
+    entry.id === myId &&
+    entry.createdAt === savedCreatedAt;
+  // The board's copy where there is one, since it is the fresher of the two;
+  // otherwise what checking in returned, so a board that could not be read
+  // does not leave this device looking like nobody checked in.
+  const mine =
+    queue.find(onBoard) ??
+    (justJoined && onBoard(justJoined) ? justJoined : undefined);
   // Any number of people can be helped at once, so this is a list, not one
   // number. The queue arrives ordered, so `upNext` is the lowest waiting number.
   const beingHelped = waiting.filter((entry) => entry.status === "pending");
@@ -178,6 +222,10 @@ export default function UserPage() {
         <section
           ref={ticketRef}
           tabIndex={-1}
+          // Focus lands here the moment a check-in succeeds, and a section
+          // with no name is announced as nothing at all — leaving the bare
+          // number as the first thing a visitor hears.
+          aria-label="Your ticket"
           className="mt-2 flex flex-col gap-[0.35rem] rounded-xl border border-border border-l-[5px] border-l-accent bg-surface p-5"
         >
           {/* The board calls people by number, so the visitor needs to know
@@ -231,7 +279,6 @@ export default function UserPage() {
           onSubmit={handleSubmit}
           onCancel={cancelForm}
           submitting={submitting}
-          error={error}
         />
       )}
 
@@ -241,6 +288,8 @@ export default function UserPage() {
       <p className="m-0 text-center text-meta text-muted">
         <a href="#/admin">Staff sign-in</a>
       </p>
+
+      <ToastList toasts={toasts.toasts} onDismiss={toasts.dismiss} kiosk />
     </main>
   );
 }

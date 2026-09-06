@@ -279,9 +279,14 @@ export async function deleteEntry(passcode: string, id: number): Promise<void> {
   }
 }
 
-/** Downloads the CSV export through an object URL so the passcode header is sent. */
-export async function downloadCsv(passcode: string): Promise<void> {
-  const res = await fetch("/api/entries.csv", {
+/** Downloads an export through an object URL so the passcode header is sent. */
+async function download(
+  passcode: string,
+  path: string,
+  name: string,
+  extension: string,
+): Promise<void> {
+  const res = await fetch(path, {
     headers: adminHeaders(passcode),
   });
   if (!res.ok) throw new ApiError(`Export failed (${res.status})`, res.status);
@@ -289,11 +294,21 @@ export async function downloadCsv(passcode: string): Promise<void> {
   const url = URL.createObjectURL(await res.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = `entries-${todayLocal()}.csv`;
+  link.download = `${name}-${todayLocal()}.${extension}`;
   // Firefox and Safari need the link in the document, and revoking the URL
   // synchronously can abort the download before it commits.
   document.body.appendChild(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** The list as it stands, laid out to paste into the sign-in log. */
+export function downloadCsv(passcode: string): Promise<void> {
+  return download(passcode, "/api/entries.csv", "current-list", "csv");
+}
+
+/** The whole record as one file, a tab per month. */
+export function downloadWorkbook(passcode: string): Promise<void> {
+  return download(passcode, "/api/entries.xlsx", "all-months", "xlsx");
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AdminEntry, Priority, Status } from "../shared/types";
-import { downloadCsv } from "../shared/api";
+import { downloadCsv, downloadWorkbook } from "../shared/api";
+import { ToastList, useToasts } from "../shared/toasts";
 import AdminBanners from "../admin/AdminBanners";
 import AdminSignIn from "../admin/AdminSignIn";
 import AdminToolbar from "../admin/AdminToolbar";
@@ -33,7 +34,8 @@ export default function AdminPage() {
   // Stricter than `owner`: managing access needs Google sign-in to have
   // someone to name, and the server refuses it outright without one.
   const manageStaff = session.role === "owner";
-  const queue = useEntries(passcode, unlocked);
+  const toasts = useToasts();
+  const queue = useEntries(passcode, unlocked, toasts, owner);
 
   const { signedInAs, typedAs, setTypedAs, helpedBy } = useHelpedBy(
     session.name,
@@ -50,9 +52,6 @@ export default function AdminPage() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [section, setSection] = useState("waiting");
   const [pendingDelete, setPendingDelete] = useState<AdminEntry | null>(null);
-  // Which month tabs the last save wrote, so staff can see it landed.
-  const [savedMonths, setSavedMonths] = useState<string[] | null>(null);
-  const [downloadError, setDownloadError] = useState("");
   const [savingMonths, setSavingMonths] = useState(false);
 
   // Through a ref so the effect fires on a new rejection, not on every render.
@@ -76,18 +75,35 @@ export default function AdminPage() {
 
   const saveMonths = async () => {
     setSavingMonths(true);
-    setSavedMonths(await queue.saveMonths());
+    await queue.saveMonths();
     setSavingMonths(false);
   };
 
-  const exportSheet = () => {
-    // Cleared first, or a failure from an earlier attempt sits on screen
-    // looking like it belongs to this one.
-    setDownloadError("");
-    return downloadCsv(passcode).catch(() =>
-      setDownloadError("Could not download the spreadsheet."),
+  const exportSheet = () =>
+    toasts.track(
+      {
+        pending: "Preparing the current list\u2026",
+        success: "Current list downloaded.",
+        failure: {
+          fallback: "The server couldn't build the current list.",
+          offline: "Can't reach the server. Nothing was downloaded.",
+        },
+      },
+      () => downloadCsv(passcode),
     );
-  };
+
+  const exportWorkbook = () =>
+    toasts.track(
+      {
+        pending: "Preparing all months\u2026",
+        success: "All months downloaded.",
+        failure: {
+          fallback: "The server couldn't build the months file.",
+          offline: "Can't reach the server. Nothing was downloaded.",
+        },
+      },
+      () => downloadWorkbook(passcode),
+    );
 
   if (!unlocked) return <AdminSignIn session={session} />;
 
@@ -139,6 +155,8 @@ export default function AdminPage() {
         showBooking={showBooking}
         onToggleBooking={() => setShowBooking((shown) => !shown)}
         onExport={exportSheet}
+        onExportWorkbook={exportWorkbook}
+        owner={owner}
         onSignOut={() => setConfirmingSignOut(true)}
         manageStaff={manageStaff}
         showStaff={showStaff}
@@ -168,10 +186,6 @@ export default function AdminPage() {
         offline={offline}
         rejected={queue.rejected}
         onResume={queue.resume}
-        actionError={queue.actionError}
-        downloadError={downloadError}
-        savedMonths={savedMonths}
-        onDismissSaved={() => setSavedMonths(null)}
         monthToClose={monthToClose}
         alerts={alerts}
       />
@@ -210,7 +224,11 @@ export default function AdminPage() {
             disabled={entries.length === 0 || savingMonths}
           >
             <RefreshIcon
-              className={savingMonths ? "animate-spin" : undefined}
+              className={
+                savingMonths
+                  ? "animate-spin motion-reduce:animate-none"
+                  : undefined
+              }
             />
             {savingMonths ? "Syncing…" : "Sync List"}
           </button>
@@ -257,6 +275,8 @@ export default function AdminPage() {
           queue.remove(entry);
         }}
       />
+
+      <ToastList toasts={toasts.toasts} onDismiss={toasts.dismiss} />
     </main>
   );
 }

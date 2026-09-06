@@ -48,6 +48,10 @@
   --color-caution-border: #f0c48a;
   --color-alert-surface: #fdecec;
   --color-alert-border: #e5a3a3;
+  /* The success tone reuses --color-resolved as its ink, at 5.07:1 on this
+     tint, so "saved" and "helped" speak with the same green. */
+  --color-success-surface: #eaf5ee;
+  --color-success-border: #a8d5b8;
 
   /* Four named steps instead of nineteen hand-written sizes. The board's
      display numerals stay one-off: each is used once, and naming them would
@@ -138,6 +142,98 @@
   background: var(--color-alert-surface);
   line-height: 1.45;
   color: var(--color-danger);
+}
+
+/* Toasts: what the console and the kiosk say about the work they are doing.
+   Fixed to the top, where a glance goes first and where nothing covers the
+   button that was just pressed. Left on the console, where the only thing
+   under them is the heading — centred, they sat over the header's own buttons
+   for as long as they were up. The host does not take pointer events; each
+   toast takes its own back, or a toast would swallow taps on what is under
+   it. */
+.toast-host {
+  position: fixed;
+  inset-inline: 0;
+  top: max(1rem, env(safe-area-inset-top));
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding-inline: 1rem;
+  pointer-events: none;
+}
+
+.toast-host > div {
+  display: flex;
+  flex-direction: column;
+  align-items: inherit;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+/* The kiosk keeps the middle: its page is one narrow column read across a
+   room, and there is no header furniture beside it to cover. */
+.toast-host-kiosk {
+  align-items: center;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0;
+  width: 100%;
+  max-width: 28rem;
+  border-radius: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  font-size: var(--text-meta);
+  line-height: 1.4;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 0.12);
+  pointer-events: auto;
+}
+
+.toast > span {
+  flex: 1;
+}
+
+.toast-pending {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+}
+
+.toast-success {
+  border: 1px solid var(--color-success-border);
+  background: var(--color-success-surface);
+  color: var(--color-resolved);
+}
+
+.toast-error {
+  border: 1px solid var(--color-alert-border);
+  border-left: 4px solid var(--color-danger);
+  background: var(--color-alert-surface);
+  color: var(--color-danger);
+}
+
+/* Sized as a tap target rather than as a glyph: it sits beside text a visitor
+   may be reading at arm's length. */
+.toast-close {
+  flex: none;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: inherit;
+}
+
+/* A kiosk is read from further away than a laptop is. */
+.toast-host-kiosk .toast {
+  max-width: var(--container-kiosk);
+  font-size: var(--text-lead);
 }
 
 /* Both dialogs are the same card floated over a dimmed page. */

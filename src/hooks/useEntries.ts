@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePoll } from "./usePoll";
+import type { ToastLabels, Toasts } from "../shared/toasts";
 import type {
   AdminEntry,
   CaseDetails,
@@ -21,6 +22,41 @@ import {
 } from "../shared/api";
 
 const POLL_MS = 5000;
+/**
+ * Failed sign-ins are counted on the server and change rarely, so the console
+ * asks for them a sixth as often as the queue. Polled together they doubled
+ * every console's requests to show a banner that is almost always the same.
+ */
+const ALERTS_POLL_MS = 30_000;
+
+/** Two staff work one queue, so a row can go while someone is acting on it. */
+const goneFrom = (id: number) =>
+  `#${id} is no longer on the board — someone else may have removed it.`;
+
+/**
+ * What a sync wrote, said in a sentence.
+ *
+ * A first sync of a board that has never been filed can span a year, and
+ * naming twelve tabs makes a toast nobody reads — past three, the count is the
+ * useful part. `Intl.ListFormat` handles the commas and the "and" for the rest.
+ */
+const NAMED_UP_TO = 3;
+export function syncedMonths(months: string[]): string {
+  if (months.length === 0) return "Nothing to sync — the board is empty.";
+  if (months.length > NAMED_UP_TO) return `Synced ${months.length} months.`;
+  const list = new Intl.ListFormat("en", {
+    style: "long",
+    type: "conjunction",
+  }).format(months);
+  return `Synced ${list}.`;
+}
+
+/** What a status change is called once it has landed. */
+const STATUS_SAID: Record<Status, (id: number) => string> = {
+  pending: (id) => `Helping #${id}.`,
+  resolved: (id) => `#${id} marked helped.`,
+  new: (id) => `#${id} reopened.`,
+};
 
 export type EntryDetails = {
   helpedBy: string;
@@ -42,7 +78,13 @@ export type NewBooking = Parameters<typeof bookEntry>[1];
  * five seconds, so folding them together would wipe "could not save" off the
  * screen before anyone read it.
  */
-export function useEntries(passcode: string, unlocked: boolean) {
+export function useEntries(
+  passcode: string,
+  unlocked: boolean,
+  toasts: Toasts,
+  /** Whether this session may read the sign-in warning at all. */
+  owner: boolean,
+) {
   const [entries, setEntries] = useState<AdminEntry[]>([]);
   const [alerts, setAlerts] = useState<AdminAlerts | null>(null);
   const [offline, setOffline] = useState(false);
@@ -51,25 +93,12 @@ export function useEntries(passcode: string, unlocked: boolean) {
   // seconds of retrying would spend the whole budget and lock staff out of
   // signing back in.
   const [rejected, setRejected] = useState<ApiError | null>(null);
-  const [actionError, setActionError] = useState("");
   // Until the first fetch lands, no entries means unknown, not empty.
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [nextEntries, nextAlerts] = await Promise.all([
-        fetchAllEntries(passcode),
-        // Owners only. A staff session is refused here, which is not a
-        // connection problem and must not read as one — they simply have no
-        // sign-in warning to see. Anything else is a real failure, and hiding
-        // it would leave an owner quietly blind to the warning.
-        fetchAdminAlerts(passcode).catch((err) => {
-          if (err instanceof ApiError && err.status === 403) return null;
-          throw err;
-        }),
-      ]);
-      setEntries(nextEntries);
-      setAlerts(nextAlerts);
+      setEntries(await fetchAllEntries(passcode));
       setOffline(false);
       setLoaded(true);
     } catch (err) {
@@ -81,6 +110,23 @@ export function useEntries(passcode: string, unlocked: boolean) {
         return;
       }
       setOffline(true);
+    }
+  }, [passcode]);
+
+  const refreshAlerts = useCallback(async () => {
+    try {
+      setAlerts(await fetchAdminAlerts(passcode));
+    } catch (err) {
+      // Owners only. A staff session is refused here, which is not a
+      // connection problem and must not read as one — they simply have no
+      // sign-in warning to see.
+      if (err instanceof ApiError && err.status === 403) {
+        setAlerts(null);
+        return;
+      }
+      // Anything else stays on the last count rather than clearing the
+      // banner: the queue's own poll is what reports a console that has gone
+      // offline or had its session refused, and it runs six times as often.
     }
   }, [passcode]);
 
@@ -96,20 +142,20 @@ export function useEntries(passcode: string, unlocked: boolean) {
   }, [unlocked]);
 
   usePoll(refresh, POLL_MS, unlocked && !rejected);
+  // Owners only. The route refuses staff, and each refusal counts against the
+  // admin rate limit every console request shares — polled regardless, a staff
+  // console spends that budget on 403s until it locks itself out.
+  usePoll(refreshAlerts, ALERTS_POLL_MS, unlocked && !rejected && owner);
 
-  /** Runs a mutation, surfacing its failure without disturbing the poll. */
+  /**
+   * Runs a mutation and says how it went, without disturbing the poll.
+   * A failure is reported, never thrown: the console has to stay usable.
+   */
+  const { track } = toasts;
   const run = useCallback(
-    async (fallback: string, action: () => Promise<void>) => {
-      setActionError("");
-      try {
-        await action();
-        return true;
-      } catch (err) {
-        setActionError(err instanceof Error ? err.message : fallback);
-        return false;
-      }
-    },
-    [],
+    <T>(labels: ToastLabels<T>, action: () => Promise<T>) =>
+      track(labels, action),
+    [track],
   );
 
   const replace = (updated: AdminEntry) =>
@@ -122,7 +168,6 @@ export function useEntries(passcode: string, unlocked: boolean) {
     alerts,
     offline,
     loaded,
-    actionError,
     rejected,
     refresh,
 
@@ -131,44 +176,100 @@ export function useEntries(passcode: string, unlocked: boolean) {
     resume: () => setRejected(null),
 
     setStatus: (entry: AdminEntry, status: Status, helpedBy: string) =>
-      run("Could not update that entry.", async () => {
-        replace(await updateStatus(passcode, entry.id, status, helpedBy));
-      }),
+      run(
+        {
+          pending: `Updating #${entry.id}\u2026`,
+          success: STATUS_SAID[status](entry.id),
+          failure: {
+            fallback: "The server couldn't save that. Nothing was changed.",
+            gone: goneFrom(entry.id),
+          },
+        },
+        async () => {
+          replace(await updateStatus(passcode, entry.id, status, helpedBy));
+        },
+      ),
 
     setPriority: (entry: AdminEntry, priority: Priority) =>
-      run("Could not change that priority.", async () => {
-        replace(await updatePriority(passcode, entry.id, priority));
-        // Retriaging moves the row, and only the server decides where to.
-        await refresh();
-      }),
+      run(
+        {
+          pending: `Retriaging #${entry.id}\u2026`,
+          success: `#${entry.id} set to ${priority}.`,
+          failure: {
+            fallback: "The server couldn't change that. Nothing was changed.",
+            gone: goneFrom(entry.id),
+          },
+        },
+        async () => {
+          replace(await updatePriority(passcode, entry.id, priority));
+          // Retriaging moves the row, and only the server decides where to.
+          await refresh();
+        },
+      ),
 
     saveDetails: (entry: AdminEntry, details: EntryChanges) =>
-      run("Could not save those changes.", async () => {
-        replace(await updateDetails(passcode, entry.id, details));
-        await refresh();
-      }),
+      run(
+        {
+          pending: `Saving #${entry.id}\u2026`,
+          success: `Saved #${entry.id}.`,
+          failure: {
+            fallback:
+              "The server couldn't save those changes. Nothing was changed.",
+            gone: goneFrom(entry.id),
+          },
+        },
+        async () => {
+          replace(await updateDetails(passcode, entry.id, details));
+          await refresh();
+        },
+      ),
 
     book: (booking: NewBooking) =>
-      run("Could not book that in.", async () => {
-        await bookEntry(passcode, booking);
-        // Refresh rather than append: the server decides where in the line a
-        // booking lands, and appending would flash it in the wrong place.
-        await refresh();
-      }),
+      run(
+        {
+          pending: "Booking them in\u2026",
+          success: `${booking.name} is on the list.`,
+          failure: {
+            fallback: "The server couldn't book that in. Nobody was added.",
+          },
+        },
+        async () => {
+          await bookEntry(passcode, booking);
+          // Refresh rather than append: the server decides where in the line a
+          // booking lands, and appending would flash it in the wrong place.
+          await refresh();
+        },
+      ),
 
     remove: (entry: AdminEntry) =>
-      run("Could not remove that entry.", async () => {
-        await deleteEntry(passcode, entry.id);
-        setEntries((current) => current.filter((row) => row.id !== entry.id));
-      }),
+      run(
+        {
+          pending: `Removing #${entry.id}\u2026`,
+          success: `Removed #${entry.id}, ${entry.name}.`,
+          failure: {
+            fallback: "The server couldn't remove that. Nothing was changed.",
+            gone: `#${entry.id} was already off the board.`,
+          },
+        },
+        async () => {
+          await deleteEntry(passcode, entry.id);
+          setEntries((current) => current.filter((row) => row.id !== entry.id));
+        },
+      ),
 
     // Nothing leaves the board: this only copies it into the month tabs.
-    saveMonths: async () => {
-      let saved: string[] = [];
-      const ok = await run("Could not save to the month tabs.", async () => {
-        saved = (await archiveMonths(passcode)).months;
-      });
-      return ok ? saved : null;
-    },
+    // The toast names the tabs it wrote, which is what staff asked it for.
+    saveMonths: () =>
+      run(
+        {
+          pending: "Copying the board into its month tabs\u2026",
+          success: syncedMonths,
+          failure: {
+            fallback:
+              "The server couldn't write the month tabs. The board is unchanged.",
+          },
+        },
+        async () => (await archiveMonths(passcode)).months,
+      ),
   };
 }

@@ -12,19 +12,13 @@ type Props = {
   onSubmit: (name: string, intake: VisitorIntake) => void;
   onCancel: () => void;
   submitting: boolean;
-  error: string;
 };
 
 /**
  * The visitor's own details. Holds the fields itself: the page unmounts this
  * on a successful check-in, which is what clears them.
  */
-export default function CheckInForm({
-  onSubmit,
-  onCancel,
-  submitting,
-  error,
-}: Props) {
+export default function CheckInForm({ onSubmit, onCancel, submitting }: Props) {
   const [name, setName] = useState("");
   const [dob, setDob] = useState("");
   const [gender, setGender] = useState<Gender | "">("");
@@ -106,7 +100,6 @@ export default function CheckInForm({
           Cancel
         </button>
       </div>
-      {error && <p className="m-0 text-meta text-danger">{error}</p>}
     </form>
   );
 }

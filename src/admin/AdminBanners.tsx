@@ -15,25 +15,20 @@ type Props = {
   /** Set when the server stopped the poll; a 401 is handled by signing out. */
   rejected: ApiError | null;
   onResume: () => void;
-  actionError: string;
-  downloadError: string;
-  /** The month tabs the last sync wrote, or null once dismissed. */
-  savedMonths: string[] | null;
-  onDismissSaved: () => void;
   /** A month that ended with its entries still on the board. */
   monthToClose: string;
   alerts: AdminAlerts | null;
 };
 
-/** Everything the console has to say about itself, above the queue. */
+/**
+ * The standing state of the console, above the queue: a server it cannot
+ * reach, a month left unclosed, someone guessing at the passcode. What a
+ * single action did — saved, removed, failed — is a toast instead.
+ */
 export default function AdminBanners({
   offline,
   rejected,
   onResume,
-  actionError,
-  downloadError,
-  savedMonths,
-  onDismissSaved,
   monthToClose,
   alerts,
 }: Props) {
@@ -54,27 +49,6 @@ export default function AdminBanners({
             onClick={onResume}
           >
             Try again
-          </button>
-        </p>
-      )}
-
-      {(actionError || downloadError) && (
-        <p className="m-0 text-meta text-danger">
-          {actionError || downloadError}
-        </p>
-      )}
-
-      {savedMonths && savedMonths.length > 0 && (
-        <p className="m-0 flex flex-wrap items-baseline gap-3 text-meta text-muted">
-          <span role="status">Synced {savedMonths.join(" and ")}.</span>
-          {/* Dismissed by whoever asked for it, rather than on a timer that
-              could take it away before it has been read. */}
-          <button
-            type="button"
-            className="bg-transparent p-0 text-accent underline"
-            onClick={onDismissSaved}
-          >
-            Dismiss
           </button>
         </p>
       )}
