@@ -98,7 +98,9 @@ they have been waiting, who helped, and three actions:
 birth, phone, gender, case type, who helped, appointment time, triage level,
 appointment type, appointment outcome, legal outcome, time spent in quarter
 hours, and a staff-only admin note. Its draft is seeded once when it opens, so
-the 5-second poll cannot overwrite half-typed changes.
+the 5-second poll cannot overwrite half-typed changes. Closing it — or the
+booking form — with edits still in it asks first, since the draft is the only
+copy of what was typed.
 
 **Header actions** — **Book someone in** (a form for a walk-up who cannot work
 the screen, or for an appointment: leave the time blank for a walk-up),
