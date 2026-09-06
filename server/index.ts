@@ -2,9 +2,14 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { createApp } from "./app.js";
 import { authConfig } from "./lib/auth.js";
-import { googleTransport, sheetsConfig } from "./sheet/sheets.js";
+import { applyClinicZone } from "./lib/zone.js";
+import { googleTabs, googleTransport, sheetsConfig } from "./sheet/sheets.js";
 import { createStore } from "./sheet/store.js";
 import { createStaffStore } from "./domain/staff.js";
+
+// Before anything reads a date. Nothing imported above takes one at load, so
+// this is early enough to decide what "today" and "this month" mean.
+const zone = applyClinicZone();
 
 // `||`, not `??`: a blank PORT= in a .env file is an empty string, which
 // Number() turns into 0 and binds a random port.
@@ -54,6 +59,17 @@ if (auth) {
     );
   }
 } else {
+  // The shared passcode is a development convenience, not a way to run a
+  // clinic: one credential, no identity behind it, and nothing to revoke per
+  // person. A deployment has to sign staff in with Google.
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      "Google sign-in is not configured, and the shared passcode is not accepted in production.\n" +
+        "Set GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, SESSION_SECRET and ADMIN_EMAILS.",
+    );
+    process.exit(1);
+  }
+
   if (!passcode) {
     console.error(
       "ADMIN_PASSCODE is not set — admin routes would reject every request.\n" +
@@ -92,11 +108,7 @@ if (!sheets) {
 // archive of a board that spans a year — are written side by side, so they
 // land after the log in no particular order among themselves.
 const store = createStore(googleTransport(sheets), {
-  openTab: (tab) =>
-    googleTransport({ ...sheets, tab }, undefined, {
-      createMissing: true,
-      atIndex: 1,
-    }),
+  tabs: googleTabs(sheets),
 });
 
 // Who may use the console. Its own tab, and — where GOOGLE_STAFF_SHEETS_ID
@@ -156,6 +168,8 @@ if (trustProxy > 0) {
 
 const server = app.listen(port, () => {
   console.log(`Entry scheduler listening on http://localhost:${port}`);
+  // Worth saying out loud: it decides which month tab a row is filed into.
+  console.log(`Months and stamps are cut in ${zone}`);
   console.log(`Queue stored in spreadsheet ${sheets.spreadsheetId}`);
   console.log(
     staticDir

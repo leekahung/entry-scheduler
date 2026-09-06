@@ -7,26 +7,9 @@ import {
   monthTab,
 } from "./archive.js";
 import { makeEntry } from "../domain/entry.fixture.js";
-import { fakeSheet } from "./sheet.fixture.js";
-import { fromSheetValues, toSheetValues } from "./columns.js";
-import { createStore, type SheetTransport } from "./store.js";
-
-/** The month tabs a store writes to, each an in-memory sheet of its own. */
-function fakeTabs() {
-  const tabs = new Map<string, ReturnType<typeof fakeSheet>>();
-  return {
-    names: () => [...tabs.keys()],
-    rows: (tab: string) => fromSheetValues(tabs.get(tab)?.current() ?? []),
-    open(tab: string): SheetTransport {
-      let sheet = tabs.get(tab);
-      if (!sheet) {
-        sheet = fakeSheet();
-        tabs.set(tab, sheet);
-      }
-      return sheet.transport;
-    },
-  };
-}
+import { fakeSheet, fakeTabs } from "./sheet.fixture.js";
+import { toSheetValues } from "./columns.js";
+import { createStore } from "./store.js";
 
 const AUGUST = "2026-08-15T12:00:00.000Z";
 const SEPTEMBER = "2026-09-10T12:00:00.000Z";
@@ -101,7 +84,7 @@ describe("a store with month tabs", () => {
   function board() {
     const tabs = fakeTabs();
     const live = fakeSheet();
-    const store = createStore(live.transport, { openTab: tabs.open });
+    const store = createStore(live.transport, { tabs });
     return { tabs, live, store };
   }
 
@@ -121,17 +104,84 @@ describe("a store with month tabs", () => {
     await expect(store.list()).resolves.toHaveLength(1);
   });
 
+  it("reads the whole record a month at a time, newest first", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(AUGUST));
+    const tabs = fakeTabs();
+    const live = fakeSheet();
+    const store = createStore(live.transport, { tabs });
+
+    const done = await store.add("Ada", "");
+    await store.update(done.id, { status: "resolved" });
+    vi.setSystemTime(new Date(SEPTEMBER));
+    await store.add("Bo", "");
+    await store.settled();
+
+    const months = await store.months();
+    expect(months.map((month) => month.tab)).toEqual([
+      "September 2026",
+      "August 2026",
+    ]);
+    expect(months[0].entries.map((entry) => entry.name)).toEqual(["Bo"]);
+    // Ada came off the board when August ended; the export still has her.
+    expect(months[1].entries.map((entry) => entry.name)).toEqual(["Ada"]);
+  });
+
+  it("reads a month tab nothing on the board mentions", async () => {
+    // A "Staff" tab alongside it, to prove only month tabs are read back.
+    const tabs = fakeTabs({
+      Staff: [["email", "role"]],
+      "July 2026": toSheetValues([
+        makeEntry({
+          id: 4,
+          name: "Cai",
+          createdAt: "2026-07-02T12:00:00.000Z",
+        }),
+      ]),
+    });
+    const store = createStore(fakeSheet().transport, { tabs });
+
+    const months = await store.months();
+    expect(months.map((month) => month.tab)).toEqual(["July 2026"]);
+    expect(months[0].entries.map((entry) => entry.name)).toEqual(["Cai"]);
+  });
+
+  it("prefers the board's copy of an entry to the filed one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(SEPTEMBER));
+    const tabs = fakeTabs();
+    const live = fakeSheet();
+    const store = createStore(live.transport, { tabs });
+
+    const entry = await store.add("Ada", "");
+    await store.sync();
+    await store.update(entry.id, { caseType: "Housing/Eviction" });
+
+    const [september] = await store.months();
+    expect(september.entries[0].caseType).toBe("Housing/Eviction");
+  });
+
+  it("exports the board alone where nothing lists the tabs", async () => {
+    const store = createStore(fakeSheet().transport);
+    await store.add("Ada", "");
+
+    const months = await store.months();
+    expect(months).toHaveLength(1);
+    expect(months[0].entries.map((entry) => entry.name)).toEqual(["Ada"]);
+  });
+
   it("carries on with the queue when a month tab cannot be written", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(AUGUST));
     const live = fakeSheet();
     const store = createStore(live.transport, {
-      openTab: () => ({
-        read: async () => [],
+      tabs: {
+        list: async () => [],
+        read: async () => new Map(),
         write: async () => {
           throw new Error("Google said no");
         },
-      }),
+      },
     });
 
     const done = await store.add("Ada", "");
@@ -210,15 +260,13 @@ describe("a store with month tabs", () => {
     });
     const live = fakeSheet();
     const store = createStore(live.transport, {
-      openTab: (tab) => {
-        const sheet = tabs.open(tab);
-        return {
-          read: sheet.read,
-          write: async (rows) => {
-            await held;
-            return sheet.write(rows);
-          },
-        };
+      tabs: {
+        list: tabs.list,
+        read: tabs.read,
+        write: async (writes) => {
+          await held;
+          return tabs.write(writes);
+        },
       },
     });
     return { tabs, live, store, release: () => release() };
@@ -267,7 +315,7 @@ describe("a store with month tabs", () => {
     expect(left.map((entry) => entry.name)).toEqual(["Bo", "Cai"]);
   });
 
-  it("files the months side by side rather than one after another", async () => {
+  it("files every month it spans in one read and one write", async () => {
     const live = fakeSheet(
       toSheetValues([
         makeEntry({ id: 1, createdAt: "2026-07-15T12:00:00.000Z" }),
@@ -275,20 +323,8 @@ describe("a store with month tabs", () => {
         makeEntry({ id: 3, createdAt: SEPTEMBER }),
       ]),
     );
-    let open = 0;
-    let mostAtOnce = 0;
-    const store = createStore(live.transport, {
-      openTab: () => ({
-        async read() {
-          open += 1;
-          mostAtOnce = Math.max(mostAtOnce, open);
-          await new Promise((resolve) => setTimeout(resolve, 5));
-          open -= 1;
-          return [];
-        },
-        async write() {},
-      }),
-    });
+    const tabs = fakeTabs();
+    const store = createStore(live.transport, { tabs });
 
     const result = await store.sync();
     expect(result.months).toEqual([
@@ -296,7 +332,85 @@ describe("a store with month tabs", () => {
       "August 2026",
       "September 2026",
     ]);
-    expect(mostAtOnce).toBe(3);
+    // Three months, but Google is asked once for all of them and told once:
+    // a call per month is what spends the per-minute quota.
+    expect(tabs.counts.read).toBe(1);
+    expect(tabs.counts.write).toBe(1);
+  });
+
+  it("reads a month tab under the name the spreadsheet gives it", async () => {
+    // A stray trailing space is still January's tab. Rebuilding the name from
+    // the month would ask for "January 2026", which is not a sheet here — and
+    // one bad range can take the whole batched read with it.
+    const tabs = fakeTabs({
+      "January 2026 ": toSheetValues([
+        makeEntry({
+          id: 7,
+          name: "Cai",
+          createdAt: "2026-01-05T12:00:00.000Z",
+        }),
+      ]),
+    });
+    const asked: string[][] = [];
+    const store = createStore(fakeSheet().transport, {
+      tabs: {
+        list: tabs.list,
+        read: (names) => {
+          asked.push(names);
+          return tabs.read(names);
+        },
+        write: tabs.write,
+      },
+    });
+
+    const months = await store.months();
+    expect(asked).toEqual([["January 2026 "]]);
+    // Named tidily in the workbook, whatever the tab is called.
+    expect(months.map((month) => month.tab)).toEqual(["January 2026"]);
+    expect(months[0].entries.map((entry) => entry.name)).toEqual(["Cai"]);
+  });
+
+  it("files back into the tab a month already has, odd name and all", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(AUGUST));
+    const tabs = fakeTabs({ "August 2026 ": [] });
+    const store = createStore(fakeSheet().transport, { tabs });
+
+    await store.add("Ada", "");
+    await store.sync();
+
+    // No second tab for the same month.
+    expect(tabs.names()).toEqual(["August 2026 "]);
+    expect(tabs.rows("August 2026 ").map((e) => e.name)).toEqual(["Ada"]);
+  });
+
+  it("never asks for a month tab the spreadsheet does not have yet", async () => {
+    const tabs = fakeTabs({ "August 2026": [] });
+    const asked: string[][] = [];
+    const store = createStore(
+      fakeSheet(
+        toSheetValues([
+          makeEntry({ id: 1, createdAt: AUGUST }),
+          makeEntry({ id: 2, createdAt: SEPTEMBER }),
+        ]),
+      ).transport,
+      {
+        tabs: {
+          list: tabs.list,
+          read: (names) => {
+            asked.push(names);
+            return tabs.read(names);
+          },
+          write: tabs.write,
+        },
+      },
+    );
+
+    await store.sync();
+    // September has never been filed, so naming its range could fail the whole
+    // batched read; only August is asked for.
+    expect(asked).toEqual([["August 2026"]]);
+    expect(tabs.names()).toContain("September 2026");
   });
 
   it("does not file an unfinished entry away, however old it is", async () => {

@@ -38,6 +38,38 @@ export function monthTab(key: string): string {
   return `${MONTH_NAMES[Number(month) - 1]} ${year}`;
 }
 
+/**
+ * The month a tab holds, or null for a tab that is not one — the live log,
+ * the staff list, or anything staff have added themselves.
+ */
+export function monthFromTab(tab: string): string | null {
+  const [, name, year] = /^([A-Za-z]+) (\d{4})$/.exec(tab.trim()) ?? [];
+  if (!name || !year) return null;
+  const month = MONTH_NAMES.indexOf(name);
+  if (month < 0) return null;
+  return `${year}-${String(month + 1).padStart(2, "0")}`;
+}
+
+/**
+ * The month tabs a spreadsheet holds, keyed by the month each one is for.
+ *
+ * The name is kept as the spreadsheet spells it rather than rebuilt from the
+ * key: `monthFromTab` trims, so a tab someone named "January 2026 " matches a
+ * month but is not called what `monthTab` would call it. Asking for a range
+ * that names no sheet is what a batched read must never do.
+ */
+export function monthTabs(tabs: string[]): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const tab of tabs) {
+    const key = monthFromTab(tab);
+    // First wins. Two tabs for one month means someone has been editing the
+    // spreadsheet by hand, and the earlier one is where the app has been
+    // writing.
+    if (key !== null && !found.has(key)) found.set(key, tab);
+  }
+  return found;
+}
+
 /** The board split into the month tabs its rows belong in. */
 export function byMonth(entries: Entry[]): Map<string, Entry[]> {
   const months = new Map<string, Entry[]>();

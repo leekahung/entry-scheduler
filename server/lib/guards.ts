@@ -91,7 +91,7 @@ export function createGuards({
 
     // Google sign-in replaces the shared passcode wherever it is configured;
     // without it the console falls back to the passcode rather than locking
-    // every deployment out the moment this shipped.
+    // every local deployment out.
     if (authConfig()) {
       identify(req)
         .then((who) => {
@@ -103,6 +103,18 @@ export function createGuards({
           next();
         })
         .catch(next);
+      return;
+    }
+
+    // Never in production. `index.ts` refuses to start in that state, so this
+    // is the second lock on the same door: however the process got here, a
+    // deployed console cannot fall back to one shared secret.
+    if (process.env.NODE_ENV === "production") {
+      failureLog.note();
+      res.status(501).json({
+        error:
+          "This console needs Google sign-in. The passcode is not accepted here.",
+      });
       return;
     }
 

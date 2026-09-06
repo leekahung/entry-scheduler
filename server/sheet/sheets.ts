@@ -168,10 +168,7 @@ export function googleTransport(
   // Only for tabs the app owns and may create, such as the staff list. Never
   // for the log: a typo in the tab name must fail loudly rather than quietly
   // create an empty tab and read the queue as empty.
-  {
-    createMissing = false,
-    atIndex,
-  }: { createMissing?: boolean; atIndex?: number } = {},
+  { createMissing = false }: { createMissing?: boolean } = {},
 ): SheetTransport {
   // A1 notation needs the sheet name single-quoted, or a tab called
   // "Sign In Log" is rejected as an unparseable range. Internal quotes double.
@@ -200,7 +197,7 @@ export function googleTransport(
 
     async write(rows) {
       const token = await getToken(config);
-      if (createMissing) await ensureTab(config, token, atIndex);
+      if (createMissing) await ensureTab(config, token);
       const width = rows[0]?.length ?? 0;
       const blank = Array<string>(width).fill("");
       const padded = [
@@ -232,23 +229,15 @@ const created = new Set<string>();
 /**
  * Creates the tab if the spreadsheet does not have it yet.
  * Remembered per process, so this costs one request rather than one per write.
- * `atIndex` places it: month tabs go to the right of the live log, which keeps
- * its place as the first tab of the spreadsheet.
  */
-async function ensureTab(
-  config: SheetsConfig,
-  token: string,
-  atIndex?: number,
-): Promise<void> {
+async function ensureTab(config: SheetsConfig, token: string): Promise<void> {
   const key = `${config.spreadsheetId}:${config.tab}`;
   if (created.has(key)) return;
   try {
     await call(config, token, `${config.spreadsheetId}:batchUpdate`, {
       method: "POST",
       body: {
-        requests: [
-          { addSheet: { properties: { title: config.tab, index: atIndex } } },
-        ],
+        requests: [{ addSheet: { properties: { title: config.tab } } }],
       },
     });
   } catch (error) {
@@ -257,6 +246,187 @@ async function ensureTab(
     if (!message.includes("already exists")) throw error;
   }
   created.add(key);
+}
+
+/**
+ * Every tab in the spreadsheet, in the order it holds them.
+ * The export needs this to find the months already filed away: those are tabs
+ * of their own and no longer on the board.
+ */
+export async function listTabs(
+  config: SheetsConfig,
+  getToken: (config: SheetsConfig) => Promise<string> = accessToken,
+): Promise<string[]> {
+  const token = await getToken(config);
+  const res = await call(
+    config,
+    token,
+    `${config.spreadsheetId}?fields=sheets.properties.title`,
+    { method: "GET" },
+  );
+  const body = (await res.json()) as {
+    sheets?: { properties?: { title?: string } }[];
+  };
+  return (body.sheets ?? [])
+    .map((sheet) => sheet.properties?.title)
+    .filter((title): title is string => Boolean(title));
+}
+
+/**
+ * How many tabs go into one batched call.
+ *
+ * Google counts a batch as a single request however many ranges it carries,
+ * so this is not about quota: it is about the size of one response, which
+ * holds every row of every tab in it.
+ */
+const BATCH = 24;
+
+const chunked = <T>(items: T[], size: number): T[][] =>
+  Array.from({ length: Math.ceil(items.length / size) }, (_, i) =>
+    items.slice(i * size, (i + 1) * size),
+  );
+
+/** A1 notation needs the tab name single-quoted, with internal quotes doubled. */
+const rangeOf = (tab: string) => `'${tab.replace(/'/g, "''")}'!A1:Z`;
+
+/** The name back out of a range, for pairing a response with what was asked. */
+const tabOf = (range: string) =>
+  (range.split("!")[0] ?? "").replace(/^'|'$/g, "").replace(/''/g, "'");
+
+/**
+ * Reads and writes whole tabs, several at a time.
+ *
+ * A month tab per request is what makes filing a year expensive — a read, a
+ * write and a create each, tens of calls against a per-minute quota the
+ * waiting room's polling is already spending. Every one of these collapses
+ * into a single batched call, which Google counts as one request.
+ */
+export type TabStore = {
+  /** Every tab the spreadsheet holds. */
+  list(): Promise<string[]>;
+  /** The named tabs' rows. A tab that does not exist yet reads as empty. */
+  read(tabs: string[]): Promise<Map<string, (string | number)[][]>>;
+  /** Writes the named tabs, creating any the spreadsheet does not have. */
+  write(
+    writes: { tab: string; values: (string | number)[][] }[],
+  ): Promise<void>;
+};
+
+export function googleTabs(
+  config: SheetsConfig,
+  getToken: (config: SheetsConfig) => Promise<string> = accessToken,
+): TabStore {
+  // Which tabs are known to exist, so filing the same month twice does not
+  // ask Google to create it twice.
+  const known = new Set<string>();
+  // How many rows each tab was last seen holding. A write shorter than that
+  // has to blank the difference, or the tail of what was there is left behind.
+  const extent = new Map<string, number>();
+
+  // A month tab does not only grow: `fromSheetValues` drops any row without a
+  // readable id, so a merge can come back shorter than the tab it was read
+  // from and leave the old tail standing as a duplicate.
+  const padded = (tab: string, values: (string | number)[][]) => {
+    const held = extent.get(tab) ?? 0;
+    extent.set(tab, values.length);
+    if (values.length >= held) return values;
+    const blank = Array<string>(values[0]?.length ?? 0).fill("");
+    return [
+      ...values,
+      ...Array.from({ length: held - values.length }, () => [...blank]),
+    ];
+  };
+
+  return {
+    list: () => listTabs(config, getToken),
+
+    async read(tabs) {
+      const rows = new Map<string, (string | number)[][]>();
+      if (tabs.length === 0) return rows;
+      const token = await getToken(config);
+
+      for (const group of chunked(tabs, BATCH)) {
+        const ranges = group
+          .map((tab) => `ranges=${encodeURIComponent(rangeOf(tab))}`)
+          .join("&");
+        const res = await call(
+          config,
+          token,
+          `${config.spreadsheetId}/values:batchGet?${ranges}`,
+          { method: "GET" },
+        );
+        const body = (await res.json()) as {
+          valueRanges?: { range?: string; values?: (string | number)[][] }[];
+        };
+        // Google answers in the order it was asked, but it names each range
+        // back, so pair on the name rather than trusting the position.
+        for (const [index, value] of (body.valueRanges ?? []).entries()) {
+          const tab = value.range ? tabOf(value.range) : group[index];
+          if (tab) {
+            const values = value.values ?? [];
+            rows.set(tab, values);
+            extent.set(tab, Math.max(extent.get(tab) ?? 0, values.length));
+            known.add(tab);
+          }
+        }
+      }
+      return rows;
+    },
+
+    async write(writes) {
+      if (writes.length === 0) return;
+      const token = await getToken(config);
+
+      // Every tab that has never been seen, created in one call rather than
+      // one apiece. They go in at index 1, which keeps the live log first and
+      // pushes the older months to the right.
+      const missing = writes
+        .map(({ tab }) => tab)
+        .filter((tab) => !known.has(tab));
+      if (missing.length > 0) {
+        try {
+          await call(config, token, `${config.spreadsheetId}:batchUpdate`, {
+            method: "POST",
+            body: {
+              requests: missing.map((title) => ({
+                addSheet: { properties: { title, index: 1 } },
+              })),
+            },
+          });
+          // Only once the call landed. A batch fails as a whole, so a refusal
+          // says nothing about which of these now exist — and remembering them
+          // as created would skip the attempt every time after, leaving the
+          // write that follows to fail on a tab nothing ever made.
+          for (const tab of missing) known.add(tab);
+        } catch (error) {
+          // "Already exists" means the spreadsheet is ahead of what this
+          // process knows, which the write below copes with; anything else is
+          // a real failure. Either way nothing is remembered as created.
+          const message = error instanceof Error ? error.message : "";
+          if (!message.includes("already exists")) throw error;
+        }
+      }
+
+      for (const group of chunked(writes, BATCH)) {
+        // RAW, never USER_ENTERED: a name beginning "=" must land as text.
+        await call(
+          config,
+          token,
+          `${config.spreadsheetId}/values:batchUpdate`,
+          {
+            method: "POST",
+            body: {
+              valueInputOption: "RAW",
+              data: group.map(({ tab, values }) => ({
+                range: rangeOf(tab),
+                values: padded(tab, values),
+              })),
+            },
+          },
+        );
+      }
+    },
+  };
 }
 
 /** The spreadsheet's web address, for staff to open, download or copy it. */

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { googleTransport, RETRIES, sheetsConfig } from "./sheets.js";
+import {
+  googleTabs,
+  googleTransport,
+  RETRIES,
+  sheetsConfig,
+} from "./sheets.js";
 
 const COMPLETE = {
   GOOGLE_SHEETS_ID: "sheet-123",
@@ -154,19 +159,6 @@ describe("googleTransport", () => {
     expect(calls.every(([url]) => !url.includes(":clear"))).toBe(true);
   });
 
-  it("puts a month tab after the log rather than in front of it", async () => {
-    const calls = record();
-    await googleTransport({ ...config, tab: "August 2026" }, token, {
-      createMissing: true,
-      atIndex: 1,
-    }).write([["ID"], [1]]);
-    const body = JSON.parse(String(calls[0][1].body));
-    expect(body.requests[0].addSheet.properties).toMatchObject({
-      title: "August 2026",
-      index: 1,
-    });
-  });
-
   it("explains a 403 as the sheet not being shared", async () => {
     vi.stubGlobal("fetch", () =>
       Promise.resolve(new Response("denied", { status: 403 })),
@@ -288,5 +280,168 @@ describe("googleTransport", () => {
       );
       expect(calls()).toBe(1);
     });
+  });
+});
+
+describe("googleTabs", () => {
+  const config = {
+    spreadsheetId: "sheet-123",
+    tab: "Sign In Log",
+    credentials: null,
+  };
+  const token = async () => "test-token";
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Every fetch made, answering each with the body the caller supplies. */
+  function record(responder: (url: string) => unknown = () => ({})) {
+    const calls: [string, RequestInit][] = [];
+    vi.stubGlobal("fetch", (url: string, init: RequestInit) => {
+      calls.push([url, init]);
+      return Promise.resolve(
+        new Response(JSON.stringify(responder(url)), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    return calls;
+  }
+
+  it("asks for every tab in one request, which Google counts as one", async () => {
+    const calls = record(() => ({
+      valueRanges: [
+        { range: "'August 2026'!A1:Z", values: [["a"]] },
+        { range: "'September 2026'!A1:Z", values: [["b"]] },
+      ],
+    }));
+
+    const rows = await googleTabs(config, token).read([
+      "August 2026",
+      "September 2026",
+    ]);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toContain("/values:batchGet?");
+    expect(calls[0][0]).toContain("ranges='August%202026'!A1%3AZ");
+    expect(calls[0][0]).toContain("ranges='September%202026'!A1%3AZ");
+    expect(rows.get("August 2026")).toEqual([["a"]]);
+    expect(rows.get("September 2026")).toEqual([["b"]]);
+  });
+
+  it("reads a tab that is not there yet as empty, not as a failure", async () => {
+    record(() => ({ valueRanges: [{ range: "'July 2026'!A1:Z" }] }));
+    const rows = await googleTabs(config, token).read(["July 2026"]);
+    expect(rows.get("July 2026")).toEqual([]);
+  });
+
+  it("blanks the rows a shorter write no longer covers", async () => {
+    const calls = record((url) =>
+      url.includes("/values:batchGet")
+        ? {
+            valueRanges: [
+              {
+                range: "'August 2026'!A1:Z",
+                // Three rows in the tab, but the middle one carries no id, so
+                // the merge that comes back is a row shorter than what is there.
+                values: [["id"], ["1"], ["hand-typed note"]],
+              },
+            ],
+          }
+        : {},
+    );
+    const tabs = googleTabs(config, token);
+
+    await tabs.read(["August 2026"]);
+    await tabs.write([{ tab: "August 2026", values: [["id"], ["1"]] }]);
+
+    const write = calls.find(([url]) => url.includes("/values:batchUpdate"));
+    // The third row is written back as blanks rather than left standing as a
+    // duplicate under the new ones.
+    expect(JSON.parse(String(write?.[1].body)).data[0].values).toEqual([
+      ["id"],
+      ["1"],
+      [""],
+    ]);
+  });
+
+  it("asks for nothing when there is nothing to read", async () => {
+    const calls = record();
+    await googleTabs(config, token).read([]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("creates the tabs it has not seen in one call, then writes in one more", async () => {
+    const calls = record();
+    await googleTabs(config, token).write([
+      { tab: "August 2026", values: [["a"]] },
+      { tab: "September 2026", values: [["b"]] },
+    ]);
+
+    expect(calls).toHaveLength(2);
+    const [create, write] = calls;
+    expect(create[0]).toContain(":batchUpdate");
+    const requests = JSON.parse(String(create[1].body)).requests;
+    expect(requests).toHaveLength(2);
+    // Index 1 keeps the live log first and pushes older months to the right.
+    expect(requests[0].addSheet.properties).toEqual({
+      title: "August 2026",
+      index: 1,
+    });
+
+    expect(write[0]).toContain("/values:batchUpdate");
+    const body = JSON.parse(String(write[1].body));
+    // RAW, or a name beginning "=" is evaluated as a formula.
+    expect(body.valueInputOption).toBe("RAW");
+    expect(body.data).toEqual([
+      { range: "'August 2026'!A1:Z", values: [["a"]] },
+      { range: "'September 2026'!A1:Z", values: [["b"]] },
+    ]);
+  });
+
+  it("does not ask twice for a tab it has already seen", async () => {
+    const tabs = googleTabs(config, token);
+    record(() => ({ valueRanges: [{ range: "'August 2026'!A1:Z" }] }));
+    await tabs.read(["August 2026"]);
+
+    const calls = record();
+    await tabs.write([{ tab: "August 2026", values: [["a"]] }]);
+    // Reading it proved it exists, so there is nothing to create.
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toContain("/values:batchUpdate");
+  });
+
+  it("carries on when the tabs it tried to create were already there", async () => {
+    vi.stubGlobal("fetch", (url: string) =>
+      Promise.resolve(
+        url.endsWith(":batchUpdate") && !url.includes("/values:")
+          ? new Response('{"error":{"message":"A sheet already exists"}}', {
+              status: 400,
+            })
+          : new Response("{}", { status: 200 }),
+      ),
+    );
+    await expect(
+      googleTabs(config, token).write([{ tab: "August 2026", values: [] }]),
+    ).resolves.toBeUndefined();
+  });
+
+  it("doubles a quote inside a tab name rather than ending the quoting", async () => {
+    const calls = record();
+    await googleTabs(config, token).write([
+      { tab: "Ada's month", values: [["a"]] },
+    ]);
+    const body = JSON.parse(String(calls[1][1].body));
+    expect(body.data[0].range).toBe("'Ada''s month'!A1:Z");
+  });
+
+  it("splits a long history into batches, to bound one response", async () => {
+    const months = Array.from({ length: 60 }, (_, i) => `Month ${i}`);
+    const calls = record(() => ({ valueRanges: [] }));
+    await googleTabs(config, token).read(months);
+    // 60 tabs at 24 a batch: three requests rather than sixty.
+    expect(calls).toHaveLength(3);
   });
 });
