@@ -50,17 +50,27 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
 
   if (!list) {
     return (
-      <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
-        <h2 className="mx-0 mt-0 mb-1 text-lead">Staff access</h2>
+      <section
+        aria-labelledby="staff-heading"
+        className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
+      >
+        <h2 id="staff-heading" className="mx-0 mt-0 mb-1 text-lead">
+          Staff access
+        </h2>
         <p className="m-0 text-muted">{error || "Loading who has access…"}</p>
       </section>
     );
   }
 
   return (
-    <section className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-surface p-5">
+    <section
+      aria-labelledby="staff-heading"
+      className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-surface p-5"
+    >
       <div>
-        <h2 className="mx-0 mt-0 mb-1 text-lead">Staff access</h2>
+        <h2 id="staff-heading" className="mx-0 mt-0 mb-1 text-lead">
+          Staff access
+        </h2>
         <p className="m-0 text-muted">
           Owners can change this list. Everyone here signs in with their own
           Google account.

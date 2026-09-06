@@ -33,7 +33,10 @@ export default function QueueBoard({ beingHelped, upNext, mineId }: Props) {
   if (beingHelped.length === 0 && !upNext) return null;
 
   return (
-    <section className="mt-2 flex flex-wrap items-stretch justify-center gap-x-6 gap-y-5 rounded-xl border border-border bg-surface p-5 text-center">
+    <section
+      aria-label="Numbers being called"
+      className="mt-2 flex flex-wrap items-stretch justify-center gap-x-6 gap-y-5 rounded-xl border border-border bg-surface p-5 text-center"
+    >
       {beingHelped.length > 0 && (
         <div className="flex-[2_1_14rem]">
           <p className={PANEL_LABEL}>Now being helped</p>

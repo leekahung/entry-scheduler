@@ -21,8 +21,11 @@ type Props = {
 /** Everyone in the line right now, by number and shortened name. */
 export default function WaitingList({ waiting, loaded, mineId }: Props) {
   return (
-    <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
-      <h2 className="mx-0 mt-0 mb-1 text-lead">
+    <section
+      aria-labelledby="waiting-heading"
+      className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5"
+    >
+      <h2 id="waiting-heading" className="mx-0 mt-0 mb-1 text-lead">
         Currently waiting{loaded ? ` (${waiting.length})` : ""}
       </h2>
       {!loaded ? (
