@@ -125,9 +125,7 @@ export default function AdminPage() {
   const shown = sections.find((tab) => tab.id === section) ?? sections[0];
 
   const tableProps = {
-    editingId: editor.editingId,
-    draft: editor.draft,
-    initialDraft: editor.initialDraft,
+    editing: editor.editing,
     onDraftChange: editor.setDraft,
     onToggleEdit: (entry: AdminEntry) => editor.toggle(entry, helpedBy.trim()),
     onStatus: (entry: AdminEntry, status: Status) =>

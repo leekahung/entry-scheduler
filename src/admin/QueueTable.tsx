@@ -9,6 +9,7 @@ import {
   type Status,
 } from "../shared/types";
 import EntryEditor from "./EntryEditor";
+import type { Editing } from "../hooks/useEntryEditor";
 import type { EditorDraft } from "./editorDraft";
 import { formatAppointment, formatTime, waitedFor } from "../shared/time";
 import type { EntryChanges } from "../hooks/useEntries";
@@ -73,10 +74,8 @@ type Props = {
   caption: string;
   /** Shown in place of the rows, under the headers, when there are none. */
   empty: string;
-  editingId: number | null;
   /** Held by the page so it survives this row moving between tables. */
-  draft: EditorDraft | null;
-  initialDraft: EditorDraft | null;
+  editing: Editing | null;
   onDraftChange: (draft: EditorDraft) => void;
   onToggleEdit: (entry: AdminEntry) => void;
   onStatus: (entry: AdminEntry, status: Status) => void;
@@ -89,9 +88,7 @@ export default function QueueTable({
   rows,
   caption,
   empty,
-  editingId,
-  draft,
-  initialDraft,
+  editing,
   onDraftChange,
   onToggleEdit,
   onStatus,
@@ -194,7 +191,7 @@ export default function QueueTable({
                       {entry.note}
                     </span>
                   )}
-                  {entry.adminNote && editingId !== entry.id && (
+                  {entry.adminNote && editing?.id !== entry.id && (
                     <span
                       className={`${NOTE} border-l-accent text-muted italic before:not-italic before:content-['Staff_note']`}
                     >
@@ -308,9 +305,9 @@ export default function QueueTable({
                       type="button"
                       className={`${ACTION} min-w-[5.25rem] border-border bg-surface text-text`}
                       onClick={() => onToggleEdit(entry)}
-                      aria-expanded={editingId === entry.id}
+                      aria-expanded={editing?.id === entry.id}
                     >
-                      {editingId === entry.id ? "Close" : "Edit"}
+                      {editing?.id === entry.id ? "Close" : "Edit"}
                     </button>
                     <button
                       type="button"
@@ -322,7 +319,7 @@ export default function QueueTable({
                   </div>
                 </td>
               </tr>
-              {editingId === entry.id && draft && initialDraft && (
+              {editing && editing.id === entry.id && (
                 <tr className={`${ROW} card-mode:-mt-2`}>
                   <td
                     colSpan={7}
@@ -330,8 +327,8 @@ export default function QueueTable({
                   >
                     <EntryEditor
                       entry={entry}
-                      draft={draft}
-                      initial={initialDraft}
+                      draft={editing.draft}
+                      initial={editing.initial}
                       onChange={onDraftChange}
                       onSave={(details) => onSave(entry, details)}
                       onCancel={() => onToggleEdit(entry)}
