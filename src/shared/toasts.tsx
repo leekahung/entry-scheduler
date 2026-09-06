@@ -109,8 +109,8 @@ export function useToasts() {
   const nextId = useRef(1);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
-  // A console left open all day starts and finishes hundreds of these, and an
-  // unmount mid-flight must not leave one waiting to set state.
+  // A console left open all day starts and finishes hundreds of these; none
+  // should still be running once the page it belongs to has gone.
   useEffect(() => {
     const running = timers.current;
     return () => {
