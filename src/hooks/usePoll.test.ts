@@ -40,14 +40,35 @@ describe("polling only while the tab is being read", () => {
     expect(poll).not.toHaveBeenCalled();
   });
 
-  it("polls the moment the tab comes back, rather than after another wait", () => {
+  it("polls the moment the tab comes back to something that has gone stale", () => {
     const poll = vi.fn();
     renderHook(() => usePoll(poll, 5000));
     act(() => setVisibility("hidden"));
+    act(() => vi.advanceTimersByTime(5000));
     poll.mockClear();
 
     act(() => setVisibility("visible"));
     expect(poll).toHaveBeenCalledTimes(1);
+  });
+
+  it("sits out the rest of the wait when the tab was away for a moment", () => {
+    const poll = vi.fn();
+    renderHook(() => usePoll(poll, 5000));
+    act(() => vi.advanceTimersByTime(1000));
+    poll.mockClear();
+
+    // Switching to another tab and back is not a reason to ask again: the
+    // board is a second old, and a console flicked between tabs would spend
+    // the rate limit a whole waiting room shares.
+    act(() => setVisibility("hidden"));
+    act(() => setVisibility("visible"));
+    expect(poll).not.toHaveBeenCalled();
+
+    // The wait it was part-way through still runs out on time.
+    act(() => vi.advanceTimersByTime(4000));
+    expect(poll).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(5000));
+    expect(poll).toHaveBeenCalledTimes(2);
   });
 
   it("does not poll at all until the caller says there is something to poll for", () => {
@@ -60,6 +81,22 @@ describe("polling only while the tab is being read", () => {
     act(() => vi.advanceTimersByTime(60_000));
     expect(poll).not.toHaveBeenCalled();
 
+    rerender({ active: true });
+    expect(poll).toHaveBeenCalledTimes(1);
+  });
+
+  it("polls at once when the caller switches back on, whatever the wait held", () => {
+    const poll = vi.fn();
+    const { rerender } = renderHook(
+      ({ active }) => usePoll(poll, 5000, active),
+      { initialProps: { active: true } },
+    );
+    act(() => vi.advanceTimersByTime(1000));
+    poll.mockClear();
+
+    // Signing out empties the board, so signing straight back in must not
+    // leave it blank for the rest of a wait nobody is watching.
+    rerender({ active: false });
     rerender({ active: true });
     expect(poll).toHaveBeenCalledTimes(1);
   });
