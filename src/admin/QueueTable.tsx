@@ -30,8 +30,17 @@ const LONG_WAIT_MINUTES = 30;
 
 // Under card-mode the header row is gone, so each cell grows its own label
 // from data-label.
-const CELL =
-  "px-3 py-[0.7rem] text-left align-middle [overflow-wrap:anywhere] border-b border-row-line card-mode:flex card-mode:items-baseline card-mode:gap-2 card-mode:border-0 card-mode:px-0 card-mode:py-[0.15rem]";
+// Shape and spacing, without saying how the cell lays its contents out.
+const CELL_BASE =
+  "px-3 py-[0.7rem] text-left align-middle [overflow-wrap:anywhere] border-b border-row-line card-mode:border-0 card-mode:px-0 card-mode:py-[0.15rem]";
+
+// As a card, most cells put their label and value on one line.
+const CELL = `${CELL_BASE} card-mode:flex card-mode:items-baseline card-mode:gap-2`;
+
+// The name is the card's heading, and its notes belong under it rather than
+// beside it: sharing the row, a two-word name is squeezed into a column narrow
+// enough to break it across lines.
+const NAME_CELL = `${CELL_BASE} card-mode:block`;
 
 const LABELLED_CELL = `${CELL} card-mode:before:block card-mode:before:flex-[0_0_5.5rem] card-mode:before:text-fine card-mode:before:font-bold card-mode:before:tracking-label card-mode:before:text-muted card-mode:before:uppercase card-mode:before:content-[attr(data-label)]`;
 
@@ -175,7 +184,7 @@ export default function QueueTable({
                   )}
                 </td>
                 <td
-                  className={`${CELL} font-semibold card-mode:block card-mode:pt-0 card-mode:pb-2 card-mode:text-lead`}
+                  className={`${NAME_CELL} font-semibold card-mode:pt-0 card-mode:pb-2 card-mode:text-lead`}
                 >
                   {entry.name}
                   {entry.note && (
