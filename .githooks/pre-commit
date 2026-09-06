@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Runs before every commit. Enabled by `npm install`, which points
+# core.hooksPath at this directory; `git commit --no-verify` skips it.
+#
+# Formatting and the lint rules Biome can fix are applied rather than
+# complained about. The typecheck and the suite have no fix mode, so those two
+# stop the commit instead.
+set -euo pipefail
+
+fail() {
+  echo ""
+  echo "  Pre-commit stopped: $1"
+  echo "  Fix it, or commit with --no-verify if you know what you are doing."
+  echo ""
+  exit 1
+}
+
+# NUL-separated: a path with a space in it is split into two broken arguments
+# by anything that divides on whitespace.
+#
+# Added, copied or modified — not deleted, which has nothing left to format.
+staged=()
+while IFS= read -r -d '' file; do
+  staged+=("$file")
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
+
+if [ ${#staged[@]} -gt 0 ]; then
+  # A file staged in part — `git add -p`, then more edits — must not be staged
+  # whole afterwards: `git add` takes the working-tree copy, which would put
+  # the edits deliberately left out of this commit into it silently. Those are
+  # still formatted, just not staged; the rest are safe to add back.
+  whole=()
+  partial=()
+  for file in "${staged[@]}"; do
+    if git diff --quiet -- "$file"; then
+      whole+=("$file")
+    else
+      partial+=("$file")
+    fi
+  done
+
+  echo "→ formatting and fixing what Biome can"
+  npx --no-install biome check --write --no-errors-on-unmatched "${staged[@]}" ||
+    fail "Biome found something it cannot fix on its own"
+
+  if [ ${#whole[@]} -gt 0 ]; then
+    git add -- "${whole[@]}"
+  fi
+
+  if [ ${#partial[@]} -gt 0 ]; then
+    echo "  note: formatted, but left for you to stage — these hold unstaged"
+    echo "  edits too, and staging them whole would commit those as well:"
+    printf '    %s\n' "${partial[@]}"
+  fi
+fi
+
+echo "→ typecheck"
+npm run --silent typecheck || fail "TypeScript rejected the change"
+
+echo "→ tests"
+npm test --silent || fail "the suite is red"
+
+echo "✓ ready to commit"
