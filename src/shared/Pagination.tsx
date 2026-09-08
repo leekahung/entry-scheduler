@@ -16,9 +16,16 @@ const BASE =
 // Both are always there and the one that leads nowhere is disabled rather than
 // hidden: the pair stays a fixed shape, and a step that is dimmed says the end
 // of the list has been reached, where one that vanished would say only that
-// something moved. Faded through opacity, which nothing else here sets — a
-// colour utility would be racing `text-text` for the same property.
-const STEP = `${BASE} border-0 bg-transparent px-[0.6rem] text-text disabled:opacity-40`;
+// something moved.
+const STEP = `${BASE} border-0 bg-transparent px-[0.6rem]`;
+// A step that goes somewhere is coloured and underlines under the pointer, the
+// same way a link says it can be followed — without a box or a fill, page text
+// in the page's own colour was a word nobody read as pressable.
+const LIVE_STEP = "text-accent hover:underline underline-offset-4";
+// Faded rather than coloured, so the pair differ in weight as well as in hue:
+// a step that leads nowhere should read as spent to anyone who cannot tell the
+// accent from the page's own ink.
+const SPENT_STEP = "text-text opacity-40";
 
 type Props = {
   page: number;
@@ -70,7 +77,7 @@ export default function Pagination({
       <span className="flex items-center gap-1">
         <button
           type="button"
-          className={STEP}
+          className={`${STEP} ${page === 1 ? SPENT_STEP : LIVE_STEP}`}
           onClick={() => onPage(page - 1)}
           disabled={page === 1}
         >
@@ -78,7 +85,7 @@ export default function Pagination({
         </button>
         <button
           type="button"
-          className={STEP}
+          className={`${STEP} ${page === pages ? SPENT_STEP : LIVE_STEP}`}
           onClick={() => onPage(page + 1)}
           disabled={page === pages}
         >
