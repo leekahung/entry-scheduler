@@ -48,6 +48,17 @@ next!", or "Someone is helping you now". An appointment that has not come due
 says so instead of counting people. The ticket is remembered in `localStorage`,
 so a reload or a locked phone comes back to it.
 
+**When the visit ends** — staff mark them helped — the ticket is replaced by a
+short "You're all set", and the device forgets which entry it was holding. It
+names nobody: a kiosk shows whatever is on its screen to whoever walks up
+next, and the ticket already did the identifying while it mattered. The message
+is held in component state rather than `localStorage`, which is what keeps the
+forgetting immediate: a reload lands on the start screen, and a staff mis-click
+back to **Waiting** cannot draw the ticket back over the next person. It stays
+until someone taps, since the start screen needs a tap either way — and backing
+out of the form it opens clears it too, so nobody who never checked in is
+thanked for coming in.
+
 **Check someone else in** clears that device and opens the check-in form
 straight away, ready for the next person. It does not remove anyone from the
 queue — only staff can do that.
@@ -77,22 +88,34 @@ none set — the box comes back, rather than signing the work with an email
 address. On a passcode deployment there is no identity behind the shared
 credential, so the name is typed there and kept on that device.
 
-Four tabs, all sharing the single queue order (arrow keys move between them):
+Five tabs, all sharing the single queue order (arrow keys move between them):
 
-| Tab                 | Holds                                   |
-| ------------------- | --------------------------------------- |
-| **Waiting**         | Walk-ins and appointments that are due  |
-| **Being helped**    | Whoever staff are with right now        |
-| **Scheduled later** | Appointments whose time has not arrived |
-| **Done**            | Everyone already helped                 |
+| Tab                 | Holds                                     |
+| ------------------- | ----------------------------------------- |
+| **Waiting**         | Walk-ins and appointments that are due    |
+| **Being helped**    | Whoever staff are with right now          |
+| **Scheduled later** | Appointments whose time has not arrived   |
+| **Done**            | Everyone already helped                   |
+| **Removed**         | Taken off the board, newest first, and able to be put back |
 
 Each row carries the number, full name, case type, a triage dropdown, how long
 they have been waiting, who helped, and three actions:
 
-- **Start helping** → **Mark helped** → **Reopen** — one button that walks the
-  status forward, and back if someone was closed by mistake.
+- **Status** — a select holding Waiting, Being helped and Done. A select
+  rather than a button that walks the three in a circle: a row goes wherever
+  it belongs in one place, so correcting a misclick is the same control as
+  making it rather than a second one beside the first.
 - **Edit** opens the row editor.
-- **Remove** deletes the entry, behind a confirmation.
+- **Remove** takes the entry off the board, behind a confirmation. It is
+  reversible: the row moves to the **Removed** tab, where **Put back** returns
+  it and owners are offered the permanent erase.
+
+**Who gets the credit** follows from where the row came from, not from where it
+lands. Moving one from *Being helped* back to *Waiting* drops the name in
+"Helped by", because nobody helped them — it was started by mistake. Moving one
+from *Done* back keeps the name: someone did do the work, and that column is
+the log's record of who. Neither sends the name of whoever made the change, so
+putting a row back in the queue cannot quietly re-credit it to them.
 
 **The row editor** is where the rest of the sign-in log gets filled in: date of
 birth, phone, gender, case type, who helped, appointment time, triage level,
@@ -108,7 +131,7 @@ the screen, or for an appointment: leave the time blank for a walk-up),
 **Download current list**, **Download all months**, **Staff access** (owners only — a button that opens
 and closes the access list), and **Sign out**, which asks first: on a shared
 console, signing out means finding whoever was signed in to get back in. Beside the queue tabs, owners
-also get **Sync List**, which copies the board into a tab per month it spans
+also get **Sync this month** after the last queue tab, which copies the board into a tab per month it spans
 without taking anything off it.
 Months are filed away on their own — see [Month tabs](#month-tabs) — so this is
 only for taking a record early.
@@ -124,9 +147,17 @@ staff out of signing back in.
 
 ## Saying what happened
 
-Both screens report their own work the same way: a short message at the top,
-which clears itself. Nothing a person does is silent, and nothing that fails is
-silent either.
+Both screens report their own work the same way: a short message that clears
+itself. Nothing a person does is silent, and nothing that fails is silent
+either.
+
+Where it appears differs, because the two screens are read differently. The
+console puts them bottom left — away from the standing banners at the top, and
+clear of the Actions column, where a toast in the other corner would cover the
+selects and buttons staff are still clicking. The kiosk keeps them at the top
+and centred: one narrow column read across a room, with no header furniture
+beside it to cover, and a check-in confirmation is the message that most needs
+to be seen.
 
 - **While it runs** — "Saving #12…", "Checking you in…". Only if the request
   takes longer than 400ms: most land well inside that, and a "Saving…" that
@@ -370,6 +401,11 @@ cannot be removed through the console, so a mistake in the list can never lock
 everyone out. Everyone else lives in the `Staff` tab of the same spreadsheet,
 which the app creates on first use.
 
+Nobody can take their own access away, by either road: an owner cannot remove
+their own row, and cannot re-add themselves as staff to the same end. Both are
+refused by the server rather than only hidden in the console, since the last
+owner to make that mistake would leave nobody able to undo it.
+
 Managing access is deliberately unavailable on a passcode-only deployment:
 everybody there shares one credential, so there is no "certain staff" to trust
 with it.
@@ -487,6 +523,14 @@ Two other things to get right before real use:
 
 ### Keeping the access list to owners
 
+Adding an address that is already listed rewrites its row, so the add form is
+also how a role is changed — and how one is taken away. It asks first, naming
+both roles, because answering like an ordinary add is no way to learn that an
+owner has just been demoted. Doing it to yourself is called out separately: the
+panel closes with the demotion and another owner has to put it back, which is
+the same thing the **Remove** button already refuses to let anyone do to their
+own access.
+
 The **Staff access** panel in the console opens only for owners, and the server
 enforces it — but the list itself lives in the spreadsheet, and Google Sheets has no way
 to keep one tab from someone who can open the file. A protected range stops
@@ -527,8 +571,12 @@ Two things write those tabs:
   happens to be the month's first is answered at once and does not wait on a
   read and a write for every month the board spans. It shows up on the board a
   moment later.
-- **Sync List**, beside the queue tabs, does the copying early. It
-  takes nothing off the board — whatever month it is — and never makes a second
+- **Sync this month** — after the last queue tab, owners only — does the
+  copying early. It follows the tabs rather than sitting by the page steps,
+  where a circular arrow would read as one of them, and carries none of a
+  button's furniture so it does not read as a fifth tab either. It keeps its
+  words: an icon alone next to five labelled tabs is a guess. It takes nothing
+  off the board — whatever month it is — and never makes a second
   tab for a month it has already written. It also writes the board back to its
   own tab, which renames any headers left by an older version.
 
@@ -566,8 +614,11 @@ cannot change a status or pull the export by calling the API directly.
 | Change a status / flag as helped          | ❌      | ✅    | ✅    |
 | Write or read notes                       | ❌      | ✅    | ✅    |
 | See timestamps and who helped             | ❌      | ✅    | ✅    |
-| Download the current list or all months   | ❌      | ✅    | ✅    |
-| Remove an entry                           | ❌      | ✅    | ✅    |
+| Download the current list                 | ❌      | ✅    | ✅    |
+| Download all months                       | ❌      | ❌    | ✅    |
+| Remove an entry (reversible)              | ❌      | ✅    | ✅    |
+| Put a removed entry back                  | ❌      | ✅    | ✅    |
+| Erase a removed entry for good            | ❌      | ❌    | ✅    |
 | Sync the board to its month tabs          | ❌      | ❌    | ✅    |
 | Open the spreadsheet itself               | ❌      | ❌    | ✅    |
 | See the failed sign-in warning            | ❌      | ❌    | ✅    |
@@ -579,44 +630,114 @@ access is switched off entirely — there is no per-person identity to trust
 with it.
 
 Nobody can take themselves out of the line: a visitor who leaves is removed by
-staff, so the log still records that they came in.
+staff. **Removing is reversible.** The row is not deleted — it is stamped with
+the time in a `Removed At` column and stays exactly where it is. Every view
+that describes the room filters it out: the public board, the queue tabs, the
+counts in the header, and the exports. It appears in one place, the **Removed**
+tab, where **Put back** clears the stamp and returns it to the board — for as
+long as the row is on it. A row both removed and finished is filed away when
+its month closes, like every other finished row, so removing is reversible for
+the month it happened in rather than for good.
+
+Every tab is read ten rows at a time, as is the visitor's waiting list. The
+control says which rows are on screen and where in the list they fall — "11–20
+of 34 · Page 2 of 4" — followed by **Previous** and **Next** side by side. Both
+steps are always there; the one that leads nowhere is dimmed rather than
+hidden, so the pair keeps its shape and a closed step says the end has been
+reached. There is no row of page numbers: the list is read in order, and those
+were numbers nobody pressed.
+
+The control itself is always there too, both steps closed while the list fits
+in one page — it appearing as a list crossed ten would move everything under
+it, which is the shift the fixed-height card and the reserved scrollbar gutter
+exist to avoid. An empty list reads "0 of 0" rather than "0–0 of 0", which
+looks like a mistake.
+
+In the console the control sits at the end of the tab strip rather than under
+the table, where the tabs it pages are.
+
+The visitor's card is always ten rows tall, short pages padded out with
+spacers that are hidden from screen readers. They are the same markup as a real
+row rather than a measured height, so the card is exactly right on the kiosk's
+larger type and with the padding a touch screen adds — and the line moving does
+not shift the page under somebody reading it.
+
+The tab's own count stays the whole tab, and the kiosk heading stays the whole
+room: a page size must never look like people leaving. The page number is
+clamped rather than stored blindly, because the rows underneath refresh on
+every poll and the page somebody is reading can stop existing while they are on
+it — falling back to the last page beats rendering nothing. Moving to another
+tab starts at page one, and so does changing a filter, since either makes a
+different list rather than the same one with a row added.
+
+The sheet is the record and the workbook is a view of it, so a removed row
+stays filed exactly where it is and is left out when the workbook is built.
+A removal never rewrites a month tab: taking a row out of one is what erasing
+does, and erasing is the guarded action. Rollover files a removed row like any
+other, which is also what keeps the board from growing without end — a removal
+is reversible for the month it happened in, and a row both removed and
+finished is filed away when that month closes, the same as every other
+finished row.
+
+Erasing is the other half, and an owner's alone: for a row that should never
+have been kept — a duplicate check-in, a test entry, someone who asked not to
+be recorded — `DELETE /api/entries/:id/record` takes it out of the month tab as
+well as off the board, for good. It is offered on a removed row, not a live
+one, so the reversible step always comes first. Both writes go through the same
+queue as every other change, so nothing can file the row back between them.
+Doing this by hand in Google Sheets does not work: the next sync merges the
+board back into the tab and the row returns, with nobody told.
+
+It is the one action nothing undoes, so three things stand in front of it. It
+is owners only. It is a separate route from the removal staff use, so no
+ordinary delete can reach it. And the caller has to send the person's name,
+which the server checks against the row — the console asks the owner to type it
+— so a stray or repeated request carries no name and is refused. Rows are
+matched on sign-in time as well as id, the pair `mergeById` keys on: numbering
+restarts at #1 when the board is emptied, so one month can hold two different
+people as #3 and the id alone would take both.
 
 ## Exports
 
-Two buttons, for two different jobs. **Download current list (CSV)** takes the
-board as `current-list-YYYY-MM-DD.csv`, to paste into the log. **Download all
-months (Excel)** takes the whole record as `all-months-YYYY-MM-DD.xlsx`, a tab
-per month, laid out the same way.
+Two buttons, for two different jobs, both giving an Excel workbook.
+**Download current list** takes the board as `current-list-YYYY-MM-DD.xlsx`, a
+single **Current list** tab. **Download all months** takes the whole record as
+`all-months-YYYY-MM-DD.xlsx`, a tab per month, laid out the same way.
 
-They are named for what they hold rather than for their format: "spreadsheet"
-and "workbook" are the same word to most people, and the difference that
-matters to staff is whether the months already filed away are in it.
+One format for both, because two would not be intuitive: staff should be
+choosing what is in the file, not what will open it. Neither label says
+"Excel", since a format they share tells nobody which to press. So they are
+named for what they hold — "spreadsheet" and "workbook" are the
+same word to most people, and the difference that matters is whether the months
+already filed away are in it.
 
 All months is the one that reaches those: they are tabs of their own and no
-longer on the board, so the CSV cannot see them. It
-reads every month tab the spreadsheet holds, and where a month is both filed
-and still on the board the board's copy wins, being the fresher of the two.
+longer on the board, so the current list cannot see them. It reads every month
+tab the spreadsheet holds, and where a month is both filed and still on the
+board the board's copy wins, being the fresher of the two.
 
 Nothing is written: it is a read of the board and the month tabs, off the write
 queue, so a download never holds up a check-in. However many months it spans,
 it costs two Sheets calls — the tab list, and one batched read of every month
 at once.
 
-The Excel file is built by `server/sheet/xlsx.ts` — an `.xlsx` is a zip of a few
+Both files are built by `server/sheet/xlsx.ts` — an `.xlsx` is a zip of a few
 XML parts, and text cells need nothing more than that, so there is no
 dependency behind it. Cells go in as inline strings, which a spreadsheet never
-evaluates, so a name beginning `=` needs none of the quoting the CSV has to do.
+evaluates, so a name beginning `=` arrives as itself with no quoting and no
+formula to run.
 
-### CSV export
+### The log layout
 
-The **Download current list** button downloads `current-list-YYYY-MM-DD.csv` laid out
-as the **SIGN IN LOG SPREADSHEET** tab of `docs/Legal Triage Ticketing System.xlsx`, so
-a day's rows paste straight in:
+Both workbooks are laid out as the **SIGN IN LOG SPREADSHEET** tab of
+`docs/Legal Triage Ticketing System.xlsx`, so a day's rows paste straight in:
 
-```csv
-Date,Client Name,DOB,Gender,Phone #,Case Type,Appointment Type,Appointment Outcome,Notes,Legal Outcome,Time (0.25 increments)
-"2026-08-05","Ada Lovelace","1990-04-02","Female","503-555-0142","Housing/Eviction","Clinic","Completed","eviction notice","REFERRAL MADE","1.25"
-```
+| Date | Client Name | DOB | Gender | Phone # | Case Type | Appointment Type | Appointment Outcome | Notes | Legal Outcome | Time (0.25 increments) |
+| ---- | ----------- | --- | ------ | ------- | --------- | ---------------- | ------------------- | ----- | ------------- | ---------------------- |
+| 2026-08-05 | Ada Lovelace | 1990-04-02 | Female | 503-555-0142 | Housing/Eviction | Clinic | Completed | eviction notice | REFERRAL MADE | 1.25 |
+
+The column order lives in `server/sheet/log.ts`, which `server/sheet/columns.ts`
+reads too, so the tab and the exports can never drift apart.
 
 Case Type, Appointment Type, Appointment Outcome, and Legal Outcome are the
 controlled vocabularies from that workbook's **CARE4 CODES** tab, mirrored in
@@ -627,9 +748,7 @@ admin note, in that order.
 Fields not in the log (id, status, who helped, timestamps) stay in the admin
 console and the API; they are deliberately left out of the export.
 
-Opens directly in Excel, Numbers, or Google Sheets. Cells starting with `=`, `+`,
-`-`, or `@` are prefixed with `'` so spreadsheets treat them as text rather than
-formulas.
+Opens directly in Excel, Numbers, or Google Sheets.
 
 ## Scripts
 
