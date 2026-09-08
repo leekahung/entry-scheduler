@@ -45,6 +45,41 @@ describe("months as tabs", () => {
     expect(stale.map((entry) => entry.id)).toEqual([1]);
   });
 
+  // Or a removed row would sit on the board for good, since nothing else takes
+  // it off. Removal stays reversible for the month it happened in.
+  it("files a finished row that was also removed, like any other", () => {
+    const stale = finishedBefore(
+      [
+        makeEntry({
+          id: 1,
+          createdAt: AUGUST,
+          status: "resolved",
+          deletedAt: "2026-08-20T10:00:00.000Z",
+        }),
+      ],
+      "2026-09",
+    );
+    expect(stale.map((entry) => entry.id)).toEqual([1]);
+  });
+
+  // Taking a row out of a tab is what erasing does. A removal reaching it
+  // would be the outcome the erase route's three guards exist to hold shut.
+  it("leaves an archived row alone when the board's copy is removed", () => {
+    const merged = mergeById(
+      [makeEntry({ id: 1, name: "Ada", createdAt: AUGUST })],
+      [
+        makeEntry({
+          id: 1,
+          name: "Ada",
+          createdAt: AUGUST,
+          deletedAt: "2026-08-20T10:00:00.000Z",
+        }),
+      ],
+    );
+    expect(merged.map((entry) => entry.name)).toEqual(["Ada"]);
+    expect(merged[0].deletedAt).not.toBe("");
+  });
+
   it("keeps two people who share a number from a month when numbering restarted", () => {
     const merged = mergeById(
       [

@@ -20,5 +20,6 @@ export const makeEntry = (overrides: Partial<Entry> = {}): Entry => ({
   timeSpent: 0,
   priority: "routine",
   scheduledFor: "",
+  deletedAt: "",
   ...overrides,
 });

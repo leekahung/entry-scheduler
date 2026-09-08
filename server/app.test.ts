@@ -68,9 +68,11 @@ describe("admin gate", () => {
     expect(res.status).toBe(401);
   });
 
-  it("blocks CSV export and full records without the passcode", async () => {
+  it("blocks the current-list export and full records without the passcode", async () => {
     await join("Ada");
-    expect((await request(server).get("/api/entries.csv")).status).toBe(401);
+    expect(
+      (await request(server).get("/api/entries/current.xlsx")).status,
+    ).toBe(401);
     expect((await request(server).get("/api/entries")).status).toBe(401);
   });
 
@@ -90,7 +92,9 @@ describe("admin gate", () => {
 
   it("rejects every admin request when no passcode is configured", async () => {
     const openApp = createApp(emptyStore(), "");
-    expect((await request(openApp).get("/api/entries.csv")).status).toBe(401);
+    expect(
+      (await request(openApp).get("/api/entries/current.xlsx")).status,
+    ).toBe(401);
   });
 
   it("refuses the passcode outright in production, however right it is", async () => {
@@ -98,7 +102,9 @@ describe("admin gate", () => {
     process.env.NODE_ENV = "production";
     try {
       const deployed = createApp(emptyStore(), PASSCODE);
-      const res = await asAdmin(request(deployed).get("/api/entries.csv"));
+      const res = await asAdmin(
+        request(deployed).get("/api/entries/current.xlsx"),
+      );
       // Not 401, which would read as "wrong passcode" and invite another
       // guess: this deployment has no passcode to get right.
       expect(res.status).toBe(501);
@@ -114,7 +120,7 @@ describe("admin gate", () => {
     try {
       const local = createApp(emptyStore(), PASSCODE);
       expect(
-        (await asAdmin(request(local).get("/api/entries.csv"))).status,
+        (await asAdmin(request(local).get("/api/entries/current.xlsx"))).status,
       ).toBe(200);
     } finally {
       process.env.NODE_ENV = previous;
@@ -202,7 +208,7 @@ describe("serving the built frontend", () => {
   });
 
   it("keeps the admin gate closed on the API while serving the SPA", async () => {
-    const res = await request(served).get("/api/entries.csv");
+    const res = await request(served).get("/api/entries/current.xlsx");
     expect(res.status).toBe(401);
   });
 });
@@ -368,12 +374,25 @@ describe("behind an unconfigured proxy", () => {
       const asOwner = signedIn("boss@clinic.org");
 
       // The board is what they are already looking at.
-      expect((await asStaff(request(app).get("/api/entries.csv"))).status).toBe(
-        200,
-      );
+      expect(
+        (await asStaff(request(app).get("/api/entries/current.xlsx"))).status,
+      ).toBe(200);
       // Every name, date of birth and note the clinic has ever filed is not.
       const refused = await asStaff(request(app).get("/api/entries.xlsx"));
       expect(refused.status).toBe(403);
+
+      // Nor is erasing a record, which is the one thing nothing undoes.
+      const made = await request(app)
+        .post("/api/entries")
+        .send({ name: "Ada" });
+      const staffErase = await asStaff(
+        request(app).delete(`/api/entries/${made.body.id}/record`),
+      ).send({ confirm: "Ada" });
+      expect(staffErase.status).toBe(403);
+      const ownerErase = await asOwner(
+        request(app).delete(`/api/entries/${made.body.id}/record`),
+      ).send({ confirm: "Ada" });
+      expect(ownerErase.status).toBe(204);
       expect(
         (await asOwner(request(app).get("/api/entries.xlsx"))).status,
       ).toBe(200);
@@ -477,8 +496,8 @@ describe("off-network admin access", () => {
     expect(res.body).toEqual({ error: "Admin passcode required." });
   });
 
-  it("refuses the CSV export and the alert feed too", async () => {
-    for (const route of ["/api/entries.csv", "/api/admin/alerts"]) {
+  it("refuses the current-list export and the alert feed too", async () => {
+    for (const route of ["/api/entries/current.xlsx", "/api/admin/alerts"]) {
       const res = await fromPublicIp(createApp(store, PASSCODE), route);
       expect(res.status).toBe(401);
     }

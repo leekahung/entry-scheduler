@@ -5,10 +5,6 @@ type Props = {
   onQuery: (value: string) => void;
   triage: Priority | "";
   onTriage: (value: Priority | "") => void;
-  incompleteOnly: boolean;
-  onIncompleteOnly: (value: boolean) => void;
-  /** How many entries are still missing something the log needs. */
-  incompleteCount: number;
   filtering: boolean;
   shown: number;
   total: number;
@@ -21,16 +17,13 @@ export default function QueueFilters({
   onQuery,
   triage,
   onTriage,
-  incompleteOnly,
-  onIncompleteOnly,
-  incompleteCount,
   filtering,
   shown,
   total,
   onClear,
 }: Props) {
-  // Narrowing the three lists at once: the sections already split by status,
-  // so this filters on the things they don't.
+  // Narrowing every list at once: the sections already split by status, so
+  // this filters on the things they don't.
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
       <label className="sr-only" htmlFor="entry-search">
@@ -63,15 +56,6 @@ export default function QueueFilters({
           </option>
         ))}
       </select>
-      <label className="flex items-center gap-[0.4rem] font-normal whitespace-nowrap">
-        <input
-          className="min-h-0 w-auto"
-          type="checkbox"
-          checked={incompleteOnly}
-          onChange={(event) => onIncompleteOnly(event.target.checked)}
-        />
-        Needs details ({incompleteCount})
-      </label>
       {/* Its own line, and always there: a row that came and went with the
         filters shortened the search field beside it and moved everything below
         the card every time someone picked a triage level. The button keeps its

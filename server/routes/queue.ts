@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { queueOrder } from "../domain/entry.js";
+import { isRemoved, queueOrder } from "../domain/entry.js";
 import { wrap } from "../lib/http.js";
 import { publicView } from "../domain/publicEntry.js";
 import { checkNewEntry } from "../domain/validate.js";
@@ -39,9 +39,11 @@ export function queueRoutes({
       // can never disagree about an appointment that comes due mid-request.
       const now = Date.now();
       res.json(
-        // Copied first: this is the store's cached array, and sorting it in
-        // place would reorder the rows a concurrent write is about to save.
-        [...entries]
+        // Filtering copies, which also keeps the sort off the store's cached
+        // array — sorting that in place would reorder the rows a concurrent
+        // write is about to save.
+        entries
+          .filter((entry) => !isRemoved(entry))
           .sort(queueOrder(now))
           .map((entry) => publicView(entry, now)),
       );

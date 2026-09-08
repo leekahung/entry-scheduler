@@ -10,7 +10,7 @@ export type QueueSection = {
 };
 
 /**
- * The queue split into the four tabs, in tab order.
+ * The queue split into its tabs, in tab order.
  * Rows come from the filtered view, so a filter tells staff where its matches
  * are rather than emptying the tab they are looking at — which is also why
  * each empty message says whether a filter is the reason.
@@ -20,9 +20,13 @@ export function queueSections(
   total: number,
   filtering: boolean,
 ): QueueSection[] {
+  // Removed rows sit in their own tab and nowhere else: they are not waiting,
+  // not being helped, not booked and not done.
+  const removed = visible.filter((e) => e.deletedAt);
+  const live = visible.filter((e) => !e.deletedAt);
   // `due` comes from the server, which also decides the order, so the split can
   // never disagree with the queue it is describing.
-  const inRoom = visible.filter((e) => e.status !== "resolved" && e.due);
+  const inRoom = live.filter((e) => e.status !== "resolved" && e.due);
   return [
     {
       id: "waiting",
@@ -49,7 +53,7 @@ export function queueSections(
     {
       id: "later",
       label: "Scheduled later",
-      rows: visible.filter((e) => e.status !== "resolved" && !e.due),
+      rows: live.filter((e) => e.status !== "resolved" && !e.due),
       caption: "Appointments that are not due yet",
       empty: filtering
         ? "No later appointment matches these filters."
@@ -58,11 +62,22 @@ export function queueSections(
     {
       id: "done",
       label: "Done",
-      rows: visible.filter((e) => e.status === "resolved"),
+      rows: live.filter((e) => e.status === "resolved"),
       caption: "Entries already helped",
       empty: filtering
         ? "Nothing already helped matches these filters."
         : "Nobody has been helped yet.",
+    },
+    {
+      id: "removed",
+      label: "Removed",
+      // Most recently removed first: a mistake is noticed straight after it
+      // is made, and this is the only tab old enough to need an order.
+      rows: [...removed].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)),
+      caption: "Entries taken off the board, which can be put back",
+      empty: filtering
+        ? "Nothing removed matches these filters."
+        : "Nothing has been removed.",
     },
   ];
 }

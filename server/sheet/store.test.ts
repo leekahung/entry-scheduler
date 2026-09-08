@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fakeSheet } from "./sheet.fixture.js";
+import { fakeSheet, fakeTabs } from "./sheet.fixture.js";
 import { CACHE_MS, createStore, type SheetTransport } from "./store.js";
+import { currentMonth, monthTab } from "./archive.js";
 
 describe("the store", () => {
   beforeEach(() => {
@@ -55,16 +56,91 @@ describe("the store", () => {
     expect(updated?.note).toBe("hello");
   });
 
-  it("clears the claim only when an entry is explicitly reopened", async () => {
+  it("keeps the claim on an entry that is merely edited", async () => {
     const store = createStore(fakeSheet().transport);
     const entry = await store.add("Ada", "");
     await store.update(entry.id, { status: "resolved", helpedBy: "Kim" });
 
     const stillClaimed = await store.update(entry.id, { adminNote: "x" });
     expect(stillClaimed?.helpedBy).toBe("Kim");
+  });
+
+  // Kim did the work; reopening the row does not unmake that, and "Helped by"
+  // is what the sign-in log records it as.
+  it("keeps the claim when a finished entry is reopened", async () => {
+    const store = createStore(fakeSheet().transport);
+    const entry = await store.add("Ada", "");
+    await store.update(entry.id, { status: "resolved", helpedBy: "Kim" });
 
     const reopened = await store.update(entry.id, { status: "new" });
-    expect(reopened?.helpedBy).toBe("");
+    expect(reopened?.helpedBy).toBe("Kim");
+  });
+
+  // Nobody helped them: the row was started by mistake and put back.
+  it("drops the claim when someone being helped goes back to waiting", async () => {
+    const store = createStore(fakeSheet().transport);
+    const entry = await store.add("Ada", "");
+    await store.update(entry.id, { status: "pending", helpedBy: "Kim" });
+
+    const back = await store.update(entry.id, { status: "new" });
+    expect(back?.helpedBy).toBe("");
+  });
+
+  it("keeps a removed entry, off the board but able to come back", async () => {
+    const store = createStore(fakeSheet().transport);
+    const entry = await store.add("Ada", "left early");
+
+    expect(await store.remove(entry.id)).toBe(true);
+    const [removed] = await store.list();
+    expect(removed?.deletedAt).not.toBe("");
+    // A second removal has nothing to do.
+    expect(await store.remove(entry.id)).toBe(false);
+
+    expect(await store.restore(entry.id)).toBe(true);
+    expect((await store.list())[0]?.deletedAt).toBe("");
+    // And nothing to restore once it is back.
+    expect(await store.restore(entry.id)).toBe(false);
+  });
+
+  // Clean reporting: the log is what the clinic worked, and a removed row is
+  // one nobody worked.
+  it("files a removed entry like any other, and leaves it out of the workbook", async () => {
+    const tabs = fakeTabs();
+    const store = createStore(fakeSheet().transport, { tabs });
+    await store.add("Ada", "");
+    const going = await store.add("Bo", "");
+    await store.remove(going.id);
+    await store.sync();
+    await store.settled();
+
+    // The sheet is the record, so the row is still in it and putting Bo back
+    // has something to put back.
+    expect(tabs.rows(monthTab(currentMonth())).map((row) => row.name)).toEqual([
+      "Ada",
+      "Bo",
+    ]);
+    // The workbook describes the clinic's work, so it is not in that.
+    const months = await store.months();
+    expect(months[0].entries.map((entry) => entry.name)).toEqual(["Ada"]);
+  });
+
+  // Only erasing takes a row off the sheet. A removal reaching that would be
+  // the one thing the erase route's three guards exist to hold shut.
+  it("leaves a filed row where it is when the entry is merely removed", async () => {
+    const tabs = fakeTabs();
+    const store = createStore(fakeSheet().transport, { tabs });
+    const entry = await store.add("Ada", "");
+    await store.sync();
+    expect(tabs.rows(monthTab(currentMonth()))).toHaveLength(1);
+
+    await store.remove(entry.id);
+    await store.sync();
+    await store.settled();
+    expect(tabs.rows(monthTab(currentMonth()))).toHaveLength(1);
+
+    expect(await store.purge(entry.id)).toBe(true);
+    await store.settled();
+    expect(tabs.rows(monthTab(currentMonth()))).toHaveLength(0);
   });
 
   it("reports an unknown id rather than writing", async () => {

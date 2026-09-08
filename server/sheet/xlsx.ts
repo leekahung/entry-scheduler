@@ -51,8 +51,7 @@ function columnRef(index: number): string {
  * A sheet's rows as worksheet XML.
  *
  * Text goes in as an inline string, which Excel never evaluates — so a name
- * beginning "=" lands as itself and needs none of the quoting the CSV export
- * has to do.
+ * beginning "=" lands as itself, with no quoting to do.
  */
 function sheetXml(rows: (string | number)[][]): string {
   const body = rows

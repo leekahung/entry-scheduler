@@ -4,7 +4,8 @@ import { toStamp } from "./stamp.js";
 /**
  * The SIGN IN LOG SPREADSHEET header row, in its own order.
  * The spreadsheet carries these columns first, then the machine fields in
- * `server/sheet/columns.ts`, so the human log and the CSV can never drift.
+ * `server/sheet/columns.ts`, so the human log and the exports can never
+ * drift.
  */
 export const LOG_COLUMNS: readonly [
   string,
@@ -32,21 +33,4 @@ export function toRows(entries: Entry[]): (string | number)[][] {
     LOG_COLUMNS.map(([header]) => header),
     ...entries.map((entry) => LOG_COLUMNS.map(([, read]) => read(entry))),
   ];
-}
-
-function escapeCell(value: string | number): string {
-  const text = String(value);
-  // Prefix formula-leading characters so spreadsheets treat them as text.
-  const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
-  return `"${safe.replace(/"/g, '""')}"`;
-}
-
-/** Renders entries as RFC 4180 CSV with a header row. */
-export function toCsv(entries: Entry[]): string {
-  const [header, ...data] = toRows(entries);
-  const rows = [
-    header.join(","),
-    ...data.map((row) => row.map(escapeCell).join(",")),
-  ];
-  return `${rows.join("\r\n")}\r\n`;
 }

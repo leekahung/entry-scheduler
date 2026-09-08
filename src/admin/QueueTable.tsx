@@ -4,6 +4,8 @@ import {
   missingForLog,
   PRIORITIES,
   PRIORITY_LABEL,
+  STATUS_LABEL,
+  STATUSES,
   type AdminEntry,
   type Priority,
   type Status,
@@ -13,18 +15,6 @@ import type { Editing } from "../hooks/useEntryEditor";
 import type { EditorDraft } from "./editorDraft";
 import { formatAppointment, formatTime, waitedFor } from "../shared/time";
 import type { EntryChanges } from "../hooks/useEntries";
-
-const NEXT_STATUS: Record<Status, Status> = {
-  new: "pending",
-  pending: "resolved",
-  resolved: "new",
-};
-
-const STATUS_ACTION: Record<Status, string> = {
-  new: "Start helping",
-  pending: "Mark helped",
-  resolved: "Reopen",
-};
 
 // Past this a walk-in has been sitting long enough that staff should see it.
 const LONG_WAIT_MINUTES = 30;
@@ -49,7 +39,7 @@ const HEAD_CELL =
   "px-3 pt-[0.7rem] pb-[0.4rem] text-left align-middle text-fine tracking-label text-muted uppercase border-b border-border";
 
 // Fixed widths per action so the column does not reflow when a label changes
-// ("Start helping" -> "Mark helped" -> "Reopen").
+// ("Edit" -> "Close").
 const ACTION =
   "px-[0.6rem] py-[0.35rem] text-meta pointer-fine:min-h-[2rem] pointer-fine:px-2 pointer-fine:py-1 card-mode:min-w-[6rem] card-mode:flex-[1_1_auto] card-mode:px-3 card-mode:py-[0.6rem] card-mode:text-[0.95rem]";
 
@@ -82,6 +72,10 @@ type Props = {
   onPriority: (entry: AdminEntry, priority: Priority) => void;
   onSave: (entry: AdminEntry, details: EntryChanges) => Promise<boolean>;
   onRemove: (entry: AdminEntry) => void;
+  onRestore: (entry: AdminEntry) => void;
+  onErase: (entry: AdminEntry) => void;
+  /** Erasing a removed row for good is an owner's. */
+  owner: boolean;
 };
 
 export default function QueueTable({
@@ -95,6 +89,9 @@ export default function QueueTable({
   onPriority,
   onSave,
   onRemove,
+  onRestore,
+  onErase,
+  owner,
 }: Props) {
   return (
     <table
@@ -128,8 +125,10 @@ export default function QueueTable({
           <th scope="col" className={`${HEAD_CELL} w-[12rem]`}>
             Helped by
           </th>
-          {/* Holds all three action buttons on one line at their fixed widths. */}
-          <th scope="col" className={`${HEAD_CELL} w-[19.5rem]`}>
+          {/* The status select and the two buttons on one line. The select is
+            held to the width of "Being helped" so the buttons after it line up
+            row to row; the other two states need less and get it anyway. */}
+          <th scope="col" className={`${HEAD_CELL} w-[20rem]`}>
             Actions
           </th>
         </tr>
@@ -224,6 +223,7 @@ export default function QueueTable({
                       onPriority(entry, event.target.value as Priority)
                     }
                     aria-label={`Triage level for ${entry.name}`}
+                    disabled={Boolean(entry.deletedAt)}
                   >
                     {PRIORITIES.map((level) => (
                       <option key={level} value={level}>
@@ -289,37 +289,74 @@ export default function QueueTable({
                     the row separators. */}
                 <td className={`${CELL} card-mode:pt-[0.6rem]`}>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      // Reopening a finished entry is rare; keep it quiet.
-                      className={`${ACTION} min-w-[6.75rem] ${
-                        entry.status === "resolved"
-                          ? "border-border bg-surface text-text"
-                          : ""
-                      }`}
-                      onClick={() => onStatus(entry, NEXT_STATUS[entry.status])}
-                    >
-                      {STATUS_ACTION[entry.status]}
-                    </button>
-                    <button
-                      type="button"
-                      className={`${ACTION} min-w-[5.25rem] border-border bg-surface text-text`}
-                      onClick={() => onToggleEdit(entry)}
-                      aria-expanded={editing?.id === entry.id}
-                    >
-                      {editing?.id === entry.id ? "Close" : "Edit"}
-                    </button>
-                    <button
-                      type="button"
-                      className={`${ACTION} min-w-[4.75rem] border-border bg-surface text-danger`}
-                      onClick={() => onRemove(entry)}
-                    >
-                      Remove
-                    </button>
+                    {entry.deletedAt ? (
+                      <>
+                        {/* A removed row is not part of the queue, so none of
+                          the queue's actions apply to it. Putting it back is
+                          what it is here for. */}
+                        <button
+                          type="button"
+                          className={`${ACTION} min-w-[6.75rem]`}
+                          onClick={() => onRestore(entry)}
+                        >
+                          Put back
+                        </button>
+                        {owner && (
+                          <button
+                            type="button"
+                            className={`${ACTION} min-w-[5.25rem] border-border bg-surface text-danger`}
+                            onClick={() => onErase(entry)}
+                          >
+                            Erase
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {/* A select rather than a button that walks the
+                          states in a circle: staff move a row wherever it
+                          belongs in one place, and correcting a misclick is
+                          the same control as making it rather than a second
+                          one sitting beside the first.
+
+                          w-auto because the base stylesheet gives every select
+                          width:100%, which in this flex row would take the
+                          whole line and push the two buttons off it. */}
+                        <select
+                          className="w-auto flex-none min-w-[7.5rem] pointer-fine:min-h-[2.25rem] px-[0.4rem] py-1 text-meta font-semibold"
+                          value={entry.status}
+                          onChange={(event) =>
+                            onStatus(entry, event.target.value as Status)
+                          }
+                          aria-label={`Status for ${entry.name}`}
+                        >
+                          {STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {STATUS_LABEL[status]}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className={`${ACTION} min-w-[5.25rem] border-border bg-surface text-text`}
+                          onClick={() => onToggleEdit(entry)}
+                          aria-expanded={editing?.id === entry.id}
+                        >
+                          {editing?.id === entry.id ? "Close" : "Edit"}
+                        </button>
+                        <button
+                          type="button"
+                          className={`${ACTION} min-w-[4.75rem] border-border bg-surface text-danger`}
+                          onClick={() => onRemove(entry)}
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
-              {editing && editing.id === entry.id && (
+              {editing && editing.id === entry.id && !entry.deletedAt && (
                 <tr className={`${ROW} card-mode:-mt-2`}>
                   <td
                     colSpan={7}

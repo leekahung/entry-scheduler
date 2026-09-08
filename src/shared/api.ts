@@ -220,8 +220,13 @@ export async function updateStatus(
     await fetch(`/api/entries/${id}`, {
       method: "PATCH",
       headers: adminHeaders(passcode),
-      // Omit a blank name so an unset "Helping as" never wipes an existing one.
-      body: JSON.stringify({ status, ...(helpedBy ? { helpedBy } : {}) }),
+      // Omit a blank name so an unset "Helping as" never wipes an existing one
+      // — and omit it entirely when putting someone back in the queue, where
+      // whoever clicked is not the person who helped them.
+      body: JSON.stringify({
+        status,
+        ...(helpedBy && status !== "new" ? { helpedBy } : {}),
+      }),
     }),
   );
 }
@@ -279,6 +284,44 @@ export async function deleteEntry(passcode: string, id: number): Promise<void> {
   }
 }
 
+/** Puts a removed entry back on the board. */
+export async function restoreEntry(
+  passcode: string,
+  id: number,
+): Promise<void> {
+  const res = await fetch(`/api/entries/${id}/restore`, {
+    method: "POST",
+    headers: adminHeaders(passcode),
+  });
+  if (!res.ok) {
+    throw new ApiError(`Could not restore entry (${res.status})`, res.status);
+  }
+}
+
+/**
+ * Erases an entry outright, month tab included. Owners only.
+ * The name is sent back for the server to check, so a request that did not
+ * come from someone reading the dialog cannot land.
+ */
+export async function purgeEntry(
+  passcode: string,
+  id: number,
+  confirm: string,
+): Promise<void> {
+  const res = await fetch(`/api/entries/${id}/record`, {
+    method: "DELETE",
+    headers: adminHeaders(passcode),
+    body: JSON.stringify({ confirm }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { error?: string };
+    throw new ApiError(
+      body?.error ?? `Could not erase entry (${res.status})`,
+      res.status,
+    );
+  }
+}
+
 /** Downloads an export through an object URL so the passcode header is sent. */
 async function download(
   passcode: string,
@@ -303,9 +346,14 @@ async function download(
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** The list as it stands, laid out to paste into the sign-in log. */
-export function downloadCsv(passcode: string): Promise<void> {
-  return download(passcode, "/api/entries.csv", "current-list", "csv");
+/** The list as it stands, laid out like the sign-in log. */
+export function downloadCurrentList(passcode: string): Promise<void> {
+  return download(
+    passcode,
+    "/api/entries/current.xlsx",
+    "current-list",
+    "xlsx",
+  );
 }
 
 /** The whole record as one file, a tab per month. */

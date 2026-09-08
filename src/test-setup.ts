@@ -5,9 +5,13 @@ import { afterEach } from "vitest";
 // would still be found by the next test's queries.
 afterEach(cleanup);
 
-// Components read this on mount for the name the console is helping as, and
-// jsdom's own implementation is shared across tests in a file.
-afterEach(() => localStorage.clear());
+// Components read these on mount — the name the console is helping as, and the
+// passcode that keeps a session unlocked — and jsdom shares both across the
+// tests in a file. Left behind, the next test starts already signed in.
+afterEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+});
 
 // jsdom parses <dialog> but implements none of its behaviour, so the
 // confirmation dialogs would throw the moment they opened. Enough of it to

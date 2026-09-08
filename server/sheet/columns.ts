@@ -1,4 +1,4 @@
-import { LOG_COLUMNS } from "./csv.js";
+import { LOG_COLUMNS } from "./log.js";
 import { fromStamp, toStamp } from "./stamp.js";
 import {
   DEFAULT_PRIORITY,
@@ -135,6 +135,14 @@ const STATE_COLUMNS: readonly Column[] = [
     },
     ["scheduledFor"],
   ],
+  [
+    "Removed At",
+    (e) => toStamp(e.deletedAt),
+    (e, raw) => {
+      e.deletedAt = fromStamp(raw);
+    },
+    ["deletedAt"],
+  ],
 ];
 
 const COLUMNS: readonly Column[] = [
@@ -175,6 +183,7 @@ export function blankEntry(): Entry {
     timeSpent: 0,
     priority: DEFAULT_PRIORITY,
     scheduledFor: "",
+    deletedAt: "",
   };
 }
 

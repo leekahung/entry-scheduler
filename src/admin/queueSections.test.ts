@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AdminEntry, Status } from "../shared/types";
+import { makeAdminEntry } from "../shared/entry.fixture";
 import { queueSections } from "./queueSections";
 
 /** Only the fields the split actually reads; the rest never reach it. */
@@ -37,6 +38,9 @@ describe("splitting the queue into tabs", () => {
       "helping",
       "later",
       "done",
+      // Last: it is a record of what is no longer in the room, not part of
+      // working it.
+      "removed",
     ]);
   });
 });
@@ -62,5 +66,40 @@ describe("what an empty tab says", () => {
     for (const section of queueSections([], 3, false)) {
       expect(section.empty).not.toContain("filters");
     }
+  });
+});
+
+describe("where a removed entry goes", () => {
+  const gone = makeAdminEntry({
+    id: 1,
+    name: "Ada",
+    deletedAt: "2026-09-07T10:00:00.000Z",
+  });
+  const here = makeAdminEntry({ id: 2, name: "Bo" });
+
+  const idsIn = (id: string, rows = [gone, here]) =>
+    queueSections(rows, rows.length, false)
+      .find((section) => section.id === id)
+      ?.rows.map((row) => row.id);
+
+  it("keeps it out of every tab that describes the room", () => {
+    expect(idsIn("waiting")).toEqual([here.id]);
+    expect(idsIn("helping")).toEqual([]);
+    expect(idsIn("later")).toEqual([]);
+    expect(idsIn("done")).toEqual([]);
+  });
+
+  it("lists it under Removed instead", () => {
+    expect(idsIn("removed")).toEqual([gone.id]);
+  });
+
+  // The mistake worth undoing is the one just made.
+  it("puts the most recently removed first", () => {
+    const older = makeAdminEntry({
+      id: 3,
+      name: "Cy",
+      deletedAt: "2026-09-01T10:00:00.000Z",
+    });
+    expect(idsIn("removed", [older, gone])).toEqual([gone.id, older.id]);
   });
 });

@@ -122,6 +122,9 @@ describe("leaving the queue", () => {
     const id = await join("Ada");
     const res = await asAdmin(request(server).delete(`/api/entries/${id}`));
     expect(res.status).toBe(204);
-    expect(await store.list()).toHaveLength(0);
+    // Off the board the room can see, though the row itself is kept so it
+    // can be put back.
+    expect((await request(server).get("/api/queue")).body).toHaveLength(0);
+    expect(await store.list()).toHaveLength(1);
   });
 });

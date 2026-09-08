@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { toCsv, toRows } from "../sheet/csv.js";
+import { toRows } from "../sheet/log.js";
 import { toXlsx } from "../sheet/xlsx.js";
 import { currentMonth, monthTab } from "../sheet/archive.js";
-import { isDue, queueOrder } from "../domain/entry.js";
+import { isDue, isRemoved, queueOrder } from "../domain/entry.js";
 import { wrap } from "../lib/http.js";
 import {
   checkBooking,
@@ -99,6 +99,49 @@ export function entryRoutes({
     }),
   );
 
+  // Erasing a record outright, rather than filing it away: for a row that
+  // should never have been collected — a duplicate check-in, a test entry,
+  // someone who asked not to be recorded.
+  //
+  // Three guards, because this is the one action nothing can undo. Owners
+  // only. A separate path from the removal staff use, so no ordinary delete
+  // can reach it by mistake. And the caller has to name the person: a stray
+  // or repeated request carries no name and is refused, so the confirmation
+  // is the server's, not just the dialog's.
+  routes.delete(
+    "/entries/:id/record",
+    adminLimiter,
+    requireAdmin,
+    requireOwnerOfRecords,
+    wrap(async (req, res) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id)) {
+        res.status(400).json({ error: "Invalid entry id." });
+        return;
+      }
+
+      const going = (await store.list()).find((entry) => entry.id === id);
+      if (!going) {
+        res.status(404).json({ error: "Entry not found." });
+        return;
+      }
+
+      const confirm = (req.body as { confirm?: unknown })?.confirm;
+      if (typeof confirm !== "string" || confirm.trim() !== going.name.trim()) {
+        res.status(400).json({
+          error: "Type the name exactly as it appears to erase this record.",
+        });
+        return;
+      }
+
+      if (!(await store.purge(id))) {
+        res.status(404).json({ error: "Entry not found." });
+        return;
+      }
+      res.status(204).end();
+    }),
+  );
+
   routes.delete(
     "/entries/:id",
     adminLimiter,
@@ -113,32 +156,44 @@ export function entryRoutes({
     }),
   );
 
-  routes.get(
-    "/entries.csv",
+  // Undoing a removal. Staff-level, like the removal it undoes: the row was
+  // never gone, so this only clears the stamp that was hiding it.
+  routes.post(
+    "/entries/:id/restore",
     adminLimiter,
     requireAdmin,
-    wrap(async (_req, res) => {
-      const entries = await store.list();
-      const stamp = new Date().toISOString().slice(0, 10);
-      // attachment() sets its own Content-Type from the extension, so it has to
-      // come first or it drops the charset and non-ASCII names decode wrongly.
-      res.attachment(`current-list-${stamp}.csv`);
-      res.type("text/csv; charset=utf-8");
-      // Excel ignores the charset header when a downloaded .csv is opened by
-      // double-click and falls back to the system codepage, which mangles any
-      // non-ASCII name. The BOM is what tells it the file is UTF-8.
-      res.send(`\uFEFF${toCsv(entries)}`);
+    wrap(async (req, res) => {
+      const id = Number(req.params.id);
+      if (!Number.isInteger(id) || !(await store.restore(id))) {
+        res.status(404).json({ error: "Entry not found." });
+        return;
+      }
+      res.status(204).end();
     }),
   );
 
-  // The whole record as one workbook, a tab per month, laid out like the CSV.
-  // The CSV is still the current list to paste into the log; this is the file
-  // to keep.
+  // The list as it stands, for a record to be taken without opening Google
+  // Sheets — and the only way to get one when Sheets is not configured.
+  routes.get(
+    "/entries/current.xlsx",
+    adminLimiter,
+    requireAdmin,
+    wrap(async (_req, res) => {
+      const entries = (await store.list()).filter((entry) => !isRemoved(entry));
+      const stamp = new Date().toISOString().slice(0, 10);
+      const book = toXlsx([{ name: "Current list", rows: toRows(entries) }]);
+      res.attachment(`current-list-${stamp}.xlsx`);
+      res.send(book);
+    }),
+  );
+
+  // The whole record as one workbook, a tab per month, laid out the same way.
+  // The list above is the board as it stands; this is the file to keep.
   //
-  // Owners only, unlike the CSV. The CSV holds the board, which every staff
-  // member is already looking at; this holds every name, date of birth, phone
-  // number and note the clinic has ever filed. Copying the board into its
-  // month tabs is an owner's, so reading them all back has to be too.
+  // Owners only, unlike that one, which holds the board every staff member is
+  // already looking at. This holds every name, date of birth, phone number and
+  // note the clinic has ever filed. Copying the board into its month tabs is
+  // an owner's, so reading them all back has to be too.
   routes.get(
     "/entries.xlsx",
     adminLimiter,

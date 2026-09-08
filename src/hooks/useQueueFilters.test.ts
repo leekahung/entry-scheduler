@@ -57,40 +57,22 @@ describe("filtering the queue", () => {
     expect(idsOf(result.current.visible)).toEqual([2]);
   });
 
-  it("narrows to the rows still missing log details", () => {
-    const { result } = renderHook(() => useQueueFilters(ROWS));
-    act(() => result.current.setIncompleteOnly(true));
-    expect(idsOf(result.current.visible)).toEqual([2, 3]);
-  });
-
   it("combines the filters rather than replacing one with the next", () => {
     const { result } = renderHook(() => useQueueFilters(ROWS));
-    act(() => result.current.setIncompleteOnly(true));
-    act(() => result.current.setQuery("Katherine"));
-    expect(idsOf(result.current.visible)).toEqual([3]);
-  });
-
-  // Counted off the whole queue, so the checkbox always says how many entries
-  // need details rather than how many the other filters happen to have left.
-  it("counts what needs details across the whole queue, not the filtered view", () => {
-    const { result } = renderHook(() => useQueueFilters(ROWS));
-    expect(result.current.incompleteCount).toBe(2);
-    act(() => result.current.setQuery("Ada"));
-    expect(idsOf(result.current.visible)).toEqual([1]);
-    expect(result.current.incompleteCount).toBe(2);
+    act(() => result.current.setTriage("urgent"));
+    act(() => result.current.setQuery("Grace"));
+    expect(idsOf(result.current.visible)).toEqual([2]);
   });
 
   it("puts every filter back at once", () => {
     const { result } = renderHook(() => useQueueFilters(ROWS));
     act(() => result.current.setQuery("Ada"));
     act(() => result.current.setTriage("routine"));
-    act(() => result.current.setIncompleteOnly(true));
 
     act(() => result.current.clear());
     expect(idsOf(result.current.visible)).toEqual([1, 2, 3]);
     expect(result.current.filtering).toBe(false);
     expect(result.current.query).toBe("");
     expect(result.current.triage).toBe("");
-    expect(result.current.incompleteOnly).toBe(false);
   });
 });

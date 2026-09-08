@@ -26,11 +26,11 @@ export default function UserPage() {
   // The kiosk rests on a start screen; the form only appears once someone
   // says they are here to check in.
   const [showForm, setShowForm] = useState(false);
-  // Survives a reload so a kiosk in use all day does not go back to inviting
-  // the first check-in. Cancelling out of the form does reset it.
-  const [checkedInBefore, setCheckedInBefore] = useState(
-    () => localStorage.getItem("checkedInBefore") === "1",
-  );
+  // That the visit ended, rather than which visit it was. Held here and not
+  // in localStorage on purpose: the ticket's own keys are cleared the moment
+  // the entry resolves, so a reload lands on the start screen and a staff
+  // mis-click back to Waiting cannot draw the ticket back over the next person.
+  const [justFinished, setJustFinished] = useState(false);
   const ticketRef = useRef<HTMLElement>(null);
   // Set only by a check-in on this device, so returning to a page that still
   // holds a ticket does not pull focus out of wherever the visitor is.
@@ -93,11 +93,6 @@ export default function UserPage() {
         // Numbering restarts at #1 after staff clear the board, so the id alone
         // can collide with a different person's later entry.
         localStorage.setItem("entryCreatedAt", entry.createdAt);
-        // Kept when the entry keys are cleared: it records that this device has
-        // been used before, not who is currently checked in. Only backing out of
-        // the form clears it.
-        localStorage.setItem("checkedInBefore", "1");
-        setCheckedInBefore(true);
         justCheckedIn.current = true;
         setMyId(entry.id);
         setMyName(entry.name);
@@ -107,6 +102,7 @@ export default function UserPage() {
         // visitor's full one.
         setJustJoined(entry);
         setShowForm(false);
+        setJustFinished(false);
         // Ordering is the server's to decide, so the board is read back for
         // it — but a blip here is not a failed check-in. The five-second poll
         // picks it up either way.
@@ -119,11 +115,12 @@ export default function UserPage() {
     setSubmitting(false);
   }
 
-  // Backing out returns the kiosk to its untouched state, greeting and all.
+  // Backing out returns the kiosk to its start screen, with nothing kept —
+  // including a visit that ended while the form was open, which would
+  // otherwise thank whoever backed out for coming in.
   function cancelForm() {
     setShowForm(false);
-    localStorage.removeItem("checkedInBefore");
-    setCheckedInBefore(false);
+    setJustFinished(false);
   }
 
   // Stable so the resolved-entry effect below can depend on it without
@@ -180,7 +177,7 @@ export default function UserPage() {
   }, [ticketId]);
 
   // Once the entry this device holds is resolved the visit is over, so the
-  // stored keys go too. Left behind, a staff mis-click on Reopen would put
+  // stored keys go too. Left behind, a staff mis-click back to Waiting would put
   // that ticket back over a form the next visitor is already filling in.
   const settledId = queue.find(
     (entry) =>
@@ -189,7 +186,11 @@ export default function UserPage() {
       entry.createdAt === savedCreatedAt,
   )?.id;
   useEffect(() => {
-    if (settledId !== undefined) forgetMyEntry();
+    if (settledId === undefined) return;
+    forgetMyEntry();
+    // Or the ticket would simply vanish mid-visit, which is what a visitor
+    // holding the tablet sees as nothing happening at all.
+    setJustFinished(true);
   }, [settledId, forgetMyEntry]);
 
   return (
@@ -268,10 +269,37 @@ export default function UserPage() {
             </button>
           </div>
         </section>
+      ) : !showForm && justFinished ? (
+        /* Named by nobody: whoever walks up next reads whatever is on this
+           screen, and the ticket already did the identifying while it
+           mattered. Held until someone taps rather than timed out, since the
+           start screen needs a tap either way. */
+        <section
+          role="status"
+          className="mt-2 flex flex-col gap-2 rounded-xl border border-border border-l-[5px] border-l-accent bg-surface p-5"
+        >
+          <p className="m-0 text-[1.35rem] font-bold kiosk:text-title">
+            You&rsquo;re all set
+          </p>
+          <p className="m-0 text-muted">Thanks for coming in.</p>
+          <button
+            type="button"
+            className="mt-2 self-start"
+            onClick={() => {
+              setJustFinished(false);
+              setShowForm(true);
+            }}
+          >
+            Check someone else in
+          </button>
+        </section>
       ) : !showForm ? (
         <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
+          {/* The kiosk speaks to whoever is standing at it, so this says
+            what they came to do. The ticket's own button is the one that
+            speaks about somebody else. */}
           <button type="button" onClick={() => setShowForm(true)}>
-            {checkedInBefore ? "Check someone else in" : "Check someone in"}
+            Check in
           </button>
         </section>
       ) : (

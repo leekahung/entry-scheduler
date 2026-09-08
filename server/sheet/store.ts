@@ -3,6 +3,7 @@ import {
   currentMonth,
   finishedBefore,
   mergeById,
+  monthKey,
   monthTab,
   monthTabs,
 } from "./archive.js";
@@ -11,6 +12,7 @@ import {
   type Entry,
   type EntryUpdate,
   type Intake,
+  isRemoved,
   UPDATABLE,
 } from "../domain/entry.js";
 import { blankEntry, fromSheetValues, toSheetValues } from "./columns.js";
@@ -43,7 +45,19 @@ export type Store = {
     booking?: Booking,
   ): Promise<Entry>;
   update(id: number, update: EntryUpdate): Promise<Entry | undefined>;
+  /**
+   * Takes an entry off the board without destroying it. The row stays where
+   * it is, stamped with the time, and everything that describes the clinic's
+   * work filters it out.
+   */
   remove(id: number): Promise<boolean>;
+  /** Puts a removed entry back on the board. */
+  restore(id: number): Promise<boolean>;
+  /**
+   * Erases an entry outright: out of its month tab as well as off the board,
+   * for a row that should never have been kept at all.
+   */
+  purge(id: number): Promise<boolean>;
   sync(): Promise<SyncResult>;
   /**
    * The whole record a month at a time, newest first — the months already
@@ -173,6 +187,29 @@ export function createStore(
   }
 
   /**
+   * Takes one entry out of the month tab it was filed into, if it is there.
+   *
+   * Matched on sign-in time as well as id, the same pair `mergeById` keys on:
+   * numbering restarts at #1 whenever the board is emptied, so one month can
+   * hold two different people as #3 and the id alone would take both.
+   */
+  async function purgeFiled(going: Entry): Promise<void> {
+    if (!tabs) return;
+    // The spreadsheet's own name for that month, where it has one — the tab
+    // `syncMonths` would have filed into, which need not be the computed name.
+    const tab = monthTabs(await tabs.list()).get(monthKey(going.createdAt));
+    if (!tab) return;
+
+    const filed = fromSheetValues((await tabs.read([tab])).get(tab) ?? []);
+    const left = filed.filter(
+      (row) => row.id !== going.id || row.createdAt !== going.createdAt,
+    );
+    // A row that was never filed costs a read and nothing more.
+    if (left.length === filed.length) return;
+    await tabs.write([{ tab, values: toSheetValues(left) }]);
+  }
+
+  /**
    * The record a month at a time: the months still on the board, and the ones
    * already filed into tabs of their own.
    *
@@ -205,7 +242,12 @@ export function createStore(
           // happens to call the tab it came from.
           return {
             tab: monthTab(key),
-            entries: mergeById(rows, onBoard.get(key) ?? []),
+            // Filed rows and board rows alike keep a removed entry where it
+            // is; the workbook describes the clinic's work, so it is here
+            // that they come out. Erasing is what takes one off the sheet.
+            entries: mergeById(rows, onBoard.get(key) ?? []).filter(
+              (entry) => !isRemoved(entry),
+            ),
           };
         })
         // A month tab someone emptied by hand is a tab with nothing in it, and
@@ -314,10 +356,15 @@ export function createStore(
           Object.assign(merged, { [field]: update[field] ?? existing[field] });
         }
         merged.status = update.status ?? existing.status;
-        // Only an explicit reopen clears the claim. Keying off the resolved
-        // status would also wipe a name typed onto an entry that is merely
-        // still waiting.
-        if (update.status === "new") merged.helpedBy = "";
+        // Coming back from being helped means nobody helped them after all —
+        // a mis-started row put back in the queue — so the claim goes too.
+        // Reopening a finished entry keeps it: someone did do the work, and
+        // "Helped by" is the log's record of who. Both need an explicit
+        // status: keying off the stored one would wipe a name typed onto an
+        // entry that is merely still waiting.
+        if (update.status === "new" && existing.status === "pending") {
+          merged.helpedBy = "";
+        }
         merged.updatedAt = new Date().toISOString();
 
         await save(entries.map((entry) => (entry.id === id ? merged : entry)));
@@ -327,9 +374,46 @@ export function createStore(
 
     remove(id) {
       return change(async (entries) => {
-        const left = entries.filter((entry) => entry.id !== id);
-        if (left.length === entries.length) return false;
-        await save(left);
+        const going = entries.find((entry) => entry.id === id);
+        if (!going || going.deletedAt) return false;
+        const at = new Date().toISOString();
+        await save(
+          entries.map((entry) =>
+            entry.id === id
+              ? { ...entry, deletedAt: at, updatedAt: at }
+              : entry,
+          ),
+        );
+        return true;
+      });
+    },
+
+    restore(id) {
+      return change(async (entries) => {
+        const back = entries.find((entry) => entry.id === id);
+        if (!back?.deletedAt) return false;
+        await save(
+          entries.map((entry) =>
+            entry.id === id
+              ? { ...entry, deletedAt: "", updatedAt: new Date().toISOString() }
+              : entry,
+          ),
+        );
+        return true;
+      });
+    },
+
+    purge(id) {
+      return change(async (entries) => {
+        const going = entries.find((entry) => entry.id === id);
+        if (!going) return false;
+        // The tab first, and not caught, for the same reason a removal files
+        // before it saves: a half-done erase that leaves the filed copy
+        // standing would report success on the one operation where being
+        // wrong is worst. Both writes are on this queue, so nothing can file
+        // the row back between them.
+        await purgeFiled(going);
+        await save(entries.filter((entry) => entry.id !== id));
         return true;
       });
     },

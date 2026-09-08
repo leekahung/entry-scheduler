@@ -1,3 +1,5 @@
+import { PAGE_SIZE, usePaging } from "../hooks/usePaging";
+import Pagination from "../shared/Pagination";
 import { STATUS_LABEL, type QueueEntry } from "../shared/types";
 
 const BADGE_COLOR: Record<QueueEntry["status"], string> = {
@@ -8,6 +10,8 @@ const BADGE_COLOR: Record<QueueEntry["status"], string> = {
 
 const BADGE =
   "whitespace-nowrap rounded-full border border-current px-2 py-[0.15rem] text-fine font-bold uppercase tracking-label";
+
+const ROW = "flex items-center gap-3 pointer-coarse:py-[0.15rem]";
 
 type Props = {
   /** Already filtered to the people actually in the line. */
@@ -20,6 +24,15 @@ type Props = {
 
 /** Everyone in the line right now, by number and shortened name. */
 export default function WaitingList({ waiting, loaded, mineId }: Props) {
+  // The heading keeps the whole count; only the rows are handed out a page at
+  // a time, so a full room does not push the rest of the screen away.
+  const page = usePaging(waiting);
+  // A page's worth of rows, always. The line moves while people are watching
+  // it, and a card that grew and shrank under them would take the rest of the
+  // screen with it — so a short page is padded out rather than closed up.
+  const fillers = PAGE_SIZE - page.rows.length;
+  const empty = loaded ? "Nobody in line right now." : "Loading the line…";
+
   return (
     <section
       aria-labelledby="waiting-heading"
@@ -28,18 +41,12 @@ export default function WaitingList({ waiting, loaded, mineId }: Props) {
       <h2 id="waiting-heading" className="mx-0 mt-0 mb-1 text-lead">
         Currently waiting{loaded ? ` (${waiting.length})` : ""}
       </h2>
-      {!loaded ? (
-        <p className="mt-1 mb-0 text-muted">Loading the line…</p>
-      ) : waiting.length === 0 ? (
-        <p className="mt-1 mb-0 text-muted">Nobody in line right now.</p>
-      ) : (
+      <div className="relative">
         <ul className="m-0 flex list-none flex-col gap-[0.4rem] p-0 kiosk:text-lead">
-          {waiting.map((entry) => (
+          {page.rows.map((entry) => (
             <li
               key={entry.id}
-              className={`flex items-center gap-3 pointer-coarse:py-[0.15rem] ${
-                mineId === entry.id ? "font-bold" : ""
-              }`}
+              className={`${ROW} ${mineId === entry.id ? "font-bold" : ""}`}
             >
               <span className="min-w-[2.5rem] font-bold text-muted tabular-nums">
                 #{entry.id}
@@ -56,8 +63,38 @@ export default function WaitingList({ waiting, loaded, mineId }: Props) {
               </span>
             </li>
           ))}
+          {/* The same markup rather than a measured height: a spacer in rem
+              would have to be re-measured for the kiosk's larger type and for
+              the padding a touch screen adds. This is exactly a row tall
+              because it is one. */}
+          {Array.from({ length: Math.max(fillers, 0) }, (_, index) => (
+            <li
+              // biome-ignore lint/suspicious/noArrayIndexKey: a spacer has nothing else to key on
+              key={`filler-${index}`}
+              aria-hidden
+              className={`${ROW} invisible`}
+            >
+              <span className="min-w-[2.5rem] tabular-nums">#0</span>
+              <span className="min-w-0 flex-1 truncate">—</span>
+              <span className={BADGE}>{STATUS_LABEL.new}</span>
+            </li>
+          ))}
         </ul>
-      )}
+        {page.rows.length === 0 && (
+          // Over the empty rows rather than in place of them, so the card is
+          // the same size whether the room is full or nobody has arrived.
+          <p className="absolute inset-0 m-0 text-muted">{empty}</p>
+        )}
+      </div>
+      <Pagination
+        page={page.page}
+        pages={page.pages}
+        from={page.from}
+        to={page.to}
+        total={page.total}
+        onPage={page.setPage}
+        label="Waiting list pages"
+      />
     </section>
   );
 }

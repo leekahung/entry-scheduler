@@ -13,6 +13,8 @@ import {
   archiveMonths,
   bookEntry,
   deleteEntry,
+  purgeEntry,
+  restoreEntry,
   fetchAdminAlerts,
   fetchAllEntries,
   updateDetails,
@@ -52,10 +54,13 @@ export function syncedMonths(months: string[]): string {
 }
 
 /** What a status change is called once it has landed. */
-const STATUS_SAID: Record<Status, (id: number) => string> = {
+const STATUS_SAID: Record<Status, (id: number, from: Status) => string> = {
   pending: (id) => `Helping #${id}.`,
   resolved: (id) => `#${id} marked helped.`,
-  new: (id) => `#${id} reopened.`,
+  // Nothing was closed when the change comes back from being helped, so the
+  // one transition is said two ways.
+  new: (id, from) =>
+    from === "pending" ? `#${id} back to waiting.` : `#${id} reopened.`,
 };
 
 export type EntryDetails = {
@@ -179,7 +184,7 @@ export function useEntries(
       run(
         {
           pending: `Updating #${entry.id}\u2026`,
-          success: STATUS_SAID[status](entry.id),
+          success: STATUS_SAID[status](entry.id, entry.status),
           failure: {
             fallback: "The server couldn't save that. Nothing was changed.",
             gone: goneFrom(entry.id),
@@ -245,7 +250,7 @@ export function useEntries(
       run(
         {
           pending: `Removing #${entry.id}\u2026`,
-          success: `Removed #${entry.id}, ${entry.name}.`,
+          success: `Removed #${entry.id}, ${entry.name}. It can be put back.`,
           failure: {
             fallback: "The server couldn't remove that. Nothing was changed.",
             gone: `#${entry.id} was already off the board.`,
@@ -253,6 +258,42 @@ export function useEntries(
         },
         async () => {
           await deleteEntry(passcode, entry.id);
+          // Re-read rather than dropped: the row is still there, now carrying
+          // the stamp that moves it to the Removed tab.
+          await refresh();
+        },
+      ),
+
+    restore: (entry: AdminEntry) =>
+      run(
+        {
+          pending: `Putting #${entry.id} back\u2026`,
+          success: `#${entry.id}, ${entry.name}, is back on the board.`,
+          failure: {
+            fallback: "The server couldn't restore that. Nothing was changed.",
+            gone: goneFrom(entry.id),
+          },
+        },
+        async () => {
+          await restoreEntry(passcode, entry.id);
+          await refresh();
+        },
+      ),
+
+    purge: (entry: AdminEntry, confirm: string) =>
+      run(
+        {
+          pending: `Erasing #${entry.id}\u2026`,
+          success: `Erased #${entry.id}, ${entry.name}, from the record.`,
+          failure: {
+            fallback: "The server couldn't erase that. Nothing was changed.",
+            gone: `#${entry.id} was already off the board.`,
+          },
+        },
+        async () => {
+          // What the owner typed, not the name already on the row: the
+          // server's check is only a check if the two can disagree.
+          await purgeEntry(passcode, entry.id, confirm);
           setEntries((current) => current.filter((row) => row.id !== entry.id));
         },
       ),
@@ -262,7 +303,7 @@ export function useEntries(
     saveMonths: () =>
       run(
         {
-          pending: "Copying the board into its month tabs\u2026",
+          pending: "Syncing the board into its month tabs\u2026",
           success: syncedMonths,
           failure: {
             fallback:

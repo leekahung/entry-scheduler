@@ -22,6 +22,7 @@ export const makeAdminEntry = (
   legalOutcome: "",
   timeSpent: 0,
   priority: "routine",
+  deletedAt: "",
   scheduledFor: "",
   ...overrides,
 });

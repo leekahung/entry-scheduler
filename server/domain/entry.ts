@@ -39,7 +39,18 @@ export type Entry = {
   priority: Priority;
   /** Booked appointment time, or "" for a walk-in. */
   scheduledFor: string;
+  /**
+   * When staff took this entry off the board, or "" while it is still on it.
+   * Removal is reversible, so the row stays where it is and every view that
+   * describes the clinic's work filters it out instead.
+   */
+  deletedAt: string;
 };
+
+/** Whether staff have taken this entry off the board. */
+export function isRemoved(entry: Entry): boolean {
+  return Boolean(entry.deletedAt);
+}
 
 /**
  * When someone joins the single shared line: their appointment time if they

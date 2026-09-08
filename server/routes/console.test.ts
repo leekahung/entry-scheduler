@@ -45,7 +45,7 @@ describe("the spreadsheet link", () => {
     );
   });
 
-  it("returns no link when Sheets is unconfigured, so the console offers the CSV instead", async () => {
+  it("returns no link when Sheets is unconfigured, so the console offers the download instead", async () => {
     const res = await asAdmin(request(server).post("/api/admin/verify"));
     expect(res.body).toEqual({ ok: true, sheetUrl: null });
   });

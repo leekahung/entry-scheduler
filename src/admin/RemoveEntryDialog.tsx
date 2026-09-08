@@ -10,7 +10,7 @@ type Props = {
   onConfirm: (entry: AdminEntry) => void;
 };
 
-/** Confirms taking one entry off the board and out of the spreadsheet. */
+/** Confirms taking one entry off the board, where it can be put back. */
 export default function RemoveEntryDialog({
   entry,
   onCancel,
@@ -24,8 +24,9 @@ export default function RemoveEntryDialog({
         <>
           <h2 className="mx-0 mt-0 mb-2 text-lead">Remove #{entry.id}?</h2>
           <p className="mx-0 mt-0 mb-5 text-muted">
-            <strong>{entry.name}</strong> will be removed from the queue and
-            deleted from the Google Sheet. This cannot be undone.
+            <strong>{entry.name}</strong> comes off the board and out of the
+            exports. The entry is kept: it moves to the <strong>Removed</strong>
+            tab, where it can be put back.
           </p>
           <div className="flex flex-wrap justify-end gap-2 narrow:flex-col-reverse">
             <button

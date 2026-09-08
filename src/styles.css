@@ -151,10 +151,13 @@
    for as long as they were up. The host does not take pointer events; each
    toast takes its own back, or a toast would swallow taps on what is under
    it. */
+/* Bottom left, away from the standing banners at the top of the console and
+   clear of the Actions column, whose selects and buttons a toast in the other
+   corner would sit on top of while staff were still clicking them. */
 .toast-host {
   position: fixed;
   inset-inline: 0;
-  top: max(1rem, env(safe-area-inset-top));
+  bottom: max(1rem, env(safe-area-inset-bottom));
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -172,15 +175,21 @@
   width: 100%;
 }
 
-/* The kiosk keeps the middle: its page is one narrow column read across a
-   room, and there is no header furniture beside it to cover. */
+/* The kiosk keeps the top and the middle: its page is one narrow column read
+   across a room, with no header furniture beside it to cover, and a check-in
+   confirmation is the one message that most needs to be seen. */
 .toast-host-kiosk {
+  top: max(1rem, env(safe-area-inset-top));
+  bottom: auto;
   align-items: center;
 }
 
 .toast {
   display: flex;
-  align-items: flex-start;
+  /* Centred, not top-aligned: the close button is a tap target taller than a
+     line of text, so a one-line message otherwise sits above the middle of
+     its own toast. */
+  align-items: center;
   gap: 0.75rem;
   margin: 0;
   width: 100%;
@@ -278,6 +287,11 @@
 @layer base {
   :root {
     color-scheme: light;
+    /* The gutter is always there, so nothing moves sideways when the page
+       grows past one screen — or when a modal dialog takes the scrollbar
+       away. Both happen constantly here: the queue crosses the fold as the
+       room fills, and every confirmation opens a dialog. */
+    scrollbar-gutter: stable;
   }
 
   body {

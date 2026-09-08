@@ -69,9 +69,7 @@ export default function QueueTabs({ tabs, active, onSelect }: Props) {
               event.preventDefault();
             }}
           >
-            {tab.count === undefined
-              ? tab.label
-              : `${tab.label} (${tab.count})`}
+            {`${tab.label} (${tab.count})`}
           </button>
         );
       })}

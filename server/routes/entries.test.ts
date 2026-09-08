@@ -1,10 +1,38 @@
 import { beforeAll, afterAll, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
+import { inflateRawSync } from "node:zlib";
 import request from "supertest";
 import { createApp } from "../app.js";
 import { fakeSheet, fakeTabs } from "../sheet/sheet.fixture.js";
 import { createStore, type Store } from "../sheet/store.js";
 import { asAdmin, emptyStore, PASSCODE } from "./routes.fixture.js";
+import { currentMonth, monthTab } from "../sheet/archive.js";
+
+/** The first worksheet's XML out of a written workbook. */
+function worksheet(book: Buffer): string {
+  const end = book.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const count = book.readUInt16LE(end + 10);
+  let at = book.readUInt32LE(end + 16);
+  for (let i = 0; i < count; i++) {
+    const compressed = book.readUInt32LE(at + 20);
+    const nameLength = book.readUInt16LE(at + 28);
+    const offset = book.readUInt32LE(at + 42);
+    const name = book.toString("utf8", at + 46, at + 46 + nameLength);
+    if (name === "xl/worksheets/sheet1.xml") {
+      const start =
+        offset +
+        30 +
+        book.readUInt16LE(offset + 26) +
+        book.readUInt16LE(offset + 28);
+      return inflateRawSync(book.subarray(start, start + compressed)).toString(
+        "utf8",
+      );
+    }
+    at +=
+      46 + nameLength + book.readUInt16LE(at + 30) + book.readUInt16LE(at + 32);
+  }
+  throw new Error("No worksheet in the workbook.");
+}
 
 /** Keeps supertest from decoding a binary body as text. */
 const asBinary = (req: request.Test) =>
@@ -37,16 +65,6 @@ async function join(name: string, note = "") {
   expect(res.status).toBe(201);
   return res.body.id as number;
 }
-
-describe("csv export", () => {
-  it("starts with a BOM so Excel reads non-ASCII names as UTF-8", async () => {
-    await join("José Nguyễn");
-    const res = await asAdmin(request(server).get("/api/entries.csv"));
-    expect(res.status).toBe(200);
-    expect(res.text.startsWith("\uFEFF")).toBe(true);
-    expect(res.text).toContain("José Nguyễn");
-  });
-});
 
 describe("month tabs", () => {
   it("reports the months it saved and leaves the board alone", async () => {
@@ -210,7 +228,7 @@ describe("correcting who helped", () => {
     expect(res.body).toMatchObject({ helpedBy: "Kim", status: "new" });
   });
 
-  it("still clears the name when an entry is reopened", async () => {
+  it("keeps the name when a finished entry is reopened", async () => {
     const id = await join("Ada");
     await asAdmin(request(server).patch(`/api/entries/${id}`)).send({
       status: "resolved",
@@ -222,6 +240,23 @@ describe("correcting who helped", () => {
         status: "new",
       },
     );
+    // Kim helped them; putting the row back in the queue does not undo that.
+    expect(res.body).toMatchObject({ helpedBy: "Kim", status: "new" });
+  });
+
+  it("drops the name when someone being helped goes back to waiting", async () => {
+    const id = await join("Ada");
+    await asAdmin(request(server).patch(`/api/entries/${id}`)).send({
+      status: "pending",
+      helpedBy: "Kim",
+    });
+
+    const res = await asAdmin(request(server).patch(`/api/entries/${id}`)).send(
+      {
+        status: "new",
+      },
+    );
+    // A mis-started row: nobody helped them, so nobody is credited.
     expect(res.body).toMatchObject({ helpedBy: "", status: "new" });
   });
 
@@ -265,7 +300,21 @@ describe("admin actions", () => {
     expect(res.status).toBe(404);
   });
 
-  it("exports every entry and status as CSV", async () => {
+  it("leaves a removed entry out of the current list", async () => {
+    await join("Ada");
+    const going = await join("Bo");
+    await asAdmin(request(server).delete(`/api/entries/${going}`));
+
+    const res = await asAdmin(
+      asBinary(request(server).get("/api/entries/current.xlsx")),
+    );
+    const sheet = worksheet(res.body);
+    expect(sheet).toContain("Ada");
+    // The log is what the clinic worked, and nobody worked this one.
+    expect(sheet).not.toContain("Bo");
+  });
+
+  it("exports the current list as a workbook staff can open", async () => {
     const first = await join("Ada", "needs a laptop");
     await join("Grace");
     await asAdmin(request(server).patch(`/api/entries/${first}`)).send({
@@ -273,20 +322,105 @@ describe("admin actions", () => {
       helpedBy: "Kim",
     });
 
-    const res = await asAdmin(request(server).get("/api/entries.csv"));
-    expect(res.status).toBe(200);
-    expect(res.headers["content-disposition"]).toContain("attachment");
-    // attachment() must not clobber the charset, or non-ASCII names mis-decode.
-    expect(res.headers["content-type"]).toContain("charset=utf-8");
-
-    const lines = res.text.trim().split("\r\n");
-    expect(lines[0]).toBe(
-      "Date,Client Name,DOB,Gender,Phone #,Case Type,Appointment Type," +
-        "Appointment Outcome,Notes,Legal Outcome,Time (0.25 increments)",
+    const res = await asAdmin(
+      asBinary(request(server).get("/api/entries/current.xlsx")),
     );
-    expect(lines[1]).toContain('"Ada"');
-    expect(lines[1]).toContain('"needs a laptop"');
-    expect(lines[2]).toContain('"Grace"');
+    expect(res.status).toBe(200);
+    expect(res.headers["content-disposition"]).toContain("current-list");
+    expect(res.headers["content-disposition"]).toContain(".xlsx");
+    // "PK": it is a zip, which is all an .xlsx is.
+    expect(res.body.subarray(0, 2).toString()).toBe("PK");
+  });
+
+  it("puts a removed entry back on the board", async () => {
+    const id = await join("Ada");
+    expect(
+      (await asAdmin(request(server).delete(`/api/entries/${id}`))).status,
+    ).toBe(204);
+    expect((await request(server).get("/api/queue")).body).toHaveLength(0);
+
+    const back = await asAdmin(
+      request(server).post(`/api/entries/${id}/restore`),
+    );
+    expect(back.status).toBe(204);
+    expect((await request(server).get("/api/queue")).body).toHaveLength(1);
+  });
+
+  it("404s a restore of an entry that was never removed", async () => {
+    const id = await join("Ada");
+    const res = await asAdmin(
+      request(server).post(`/api/entries/${id}/restore`),
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("hands the console removed rows so it can offer to restore them", async () => {
+    const id = await join("Ada");
+    await asAdmin(request(server).delete(`/api/entries/${id}`));
+
+    const res = await asAdmin(request(server).get("/api/entries"));
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].deletedAt).not.toBe("");
+  });
+
+  it("erases a record from the month tab as well as the board", async () => {
+    const tabs = fakeTabs();
+    const tabbed = createApp(
+      createStore(fakeSheet().transport, { tabs }),
+      PASSCODE,
+    );
+    const made = await request(tabbed)
+      .post("/api/entries")
+      .send({ name: "Ada", phone: "503-555-0142" });
+    await asAdmin(request(tabbed).post("/api/entries/archive"));
+    expect(tabs.rows(monthTab(currentMonth()))).toHaveLength(1);
+
+    const res = await asAdmin(
+      request(tabbed).delete(`/api/entries/${made.body.id}/record`),
+    ).send({ confirm: "Ada" });
+    expect(res.status).toBe(204);
+
+    // Off the board and out of the tab: the point of erasing rather than
+    // removing is that no copy is left behind.
+    expect(tabs.rows(monthTab(currentMonth()))).toHaveLength(0);
+    expect((await asAdmin(request(tabbed).get("/api/entries"))).body).toEqual(
+      [],
+    );
+  });
+
+  it("erases nothing unless the caller names the person", async () => {
+    const id = await join("Ada");
+
+    for (const body of [
+      {},
+      { confirm: "" },
+      { confirm: "Grace" },
+      { confirm: 7 },
+    ]) {
+      const res = await asAdmin(
+        request(server).delete(`/api/entries/${id}/record`),
+      ).send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/name/i);
+    }
+    // Still there, every time.
+    expect(await store.list()).toHaveLength(1);
+  });
+
+  it("refuses to erase without a passcode", async () => {
+    const id = await join("Ada");
+    const res = await request(server)
+      .delete(`/api/entries/${id}/record`)
+      .send({ confirm: "Ada" });
+    expect(res.status).toBe(401);
+    expect(await store.list()).toHaveLength(1);
+  });
+
+  it("404s an erase of an entry that is not there", async () => {
+    const res = await asAdmin(
+      request(server).delete("/api/entries/99/record"),
+    ).send({ confirm: "Ada" });
+    expect(res.status).toBe(404);
   });
 
   it("downloads the record as a workbook, a tab per month", async () => {

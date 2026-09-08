@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { AdminEntry, Priority, Status } from "../shared/types";
-import { downloadCsv, downloadWorkbook } from "../shared/api";
+import { downloadCurrentList, downloadWorkbook } from "../shared/api";
 import { ToastList, useToasts } from "../shared/toasts";
 import AdminBanners from "../admin/AdminBanners";
 import AdminSignIn from "../admin/AdminSignIn";
@@ -8,10 +8,11 @@ import AdminToolbar from "../admin/AdminToolbar";
 import BookingForm from "../admin/BookingForm";
 import ConfirmDialog from "../admin/ConfirmDialog";
 import HelpingAs from "../admin/HelpingAs";
-import { RefreshIcon } from "../admin/icons";
 import QueueFilters from "../admin/QueueFilters";
+import { RefreshIcon } from "../admin/icons";
 import { queueSections } from "../admin/queueSections";
 import QueueTabs, { panelId, tabId } from "../admin/QueueTabs";
+import EraseEntryDialog from "../admin/EraseEntryDialog";
 import RemoveEntryDialog from "../admin/RemoveEntryDialog";
 import QueueTable from "../admin/QueueTable";
 import StaffAccess from "../admin/StaffAccess";
@@ -22,6 +23,8 @@ import { useQueueFilters } from "../hooks/useQueueFilters";
 import type { EntryChanges } from "../hooks/useEntries";
 import { useAdminSession } from "../hooks/useAdminSession";
 import { useEntries } from "../hooks/useEntries";
+import { usePaging } from "../hooks/usePaging";
+import Pagination from "../shared/Pagination";
 
 /** Staff console: work the queue, book people in, export the full sheet. */
 export default function AdminPage() {
@@ -52,6 +55,7 @@ export default function AdminPage() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [section, setSection] = useState("waiting");
   const [pendingDelete, setPendingDelete] = useState<AdminEntry | null>(null);
+  const [pendingErase, setPendingErase] = useState<AdminEntry | null>(null);
   const [savingMonths, setSavingMonths] = useState(false);
 
   // Through a ref so the effect fires on a new rejection, not on every render.
@@ -89,7 +93,7 @@ export default function AdminPage() {
           offline: "Can't reach the server. Nothing was downloaded.",
         },
       },
-      () => downloadCsv(passcode),
+      () => downloadCurrentList(passcode),
     );
 
   const exportWorkbook = () =>
@@ -105,24 +109,33 @@ export default function AdminPage() {
       () => downloadWorkbook(passcode),
     );
 
+  const sections = queueSections(
+    filters.visible,
+    queue.entries.length,
+    filters.filtering,
+  );
+  const found = sections.find((tab) => tab.id === section) ?? sections[0];
+  // The tab count stays the whole tab; only the table is handed out a page at
+  // a time, so nobody has to read past a screenful to find one row. Declared
+  // above the sign-in gate below: a hook behind an early return would change
+  // how many this component calls the moment someone signs in.
+  const page = usePaging(found.rows);
+  const shown = { ...found, rows: page.rows };
+
   if (!unlocked) return <AdminSignIn session={session} />;
 
   const { entries, alerts, offline, loaded } = queue;
 
   // Counted off the full queue, not the filtered view: this line is the state
   // of the room, and a filter should never make people appear to leave it.
-  const allInRoom = entries.filter((e) => e.status !== "resolved" && e.due);
+  // Everything that counts the room counts the board, and a removed entry is
+  // not on it. The Removed tab is the only place they appear.
+  const onBoard = entries.filter((e) => !e.deletedAt);
+  const allInRoom = onBoard.filter((e) => e.status !== "resolved" && e.due);
   const beingHelped = allInRoom.filter((e) => e.status === "pending").length;
   // The month rolled over with last month's entries still on the board, so
   // they have not been exported yet.
-  const monthToClose = unclosedMonth(entries.map((entry) => entry.createdAt));
-
-  const sections = queueSections(
-    filters.visible,
-    entries.length,
-    filters.filtering,
-  );
-  const shown = sections.find((tab) => tab.id === section) ?? sections[0];
+  const monthToClose = unclosedMonth(onBoard.map((entry) => entry.createdAt));
 
   const tableProps = {
     editing: editor.editing,
@@ -138,6 +151,9 @@ export default function AdminPage() {
       return saved;
     },
     onRemove: setPendingDelete,
+    onRestore: queue.restore,
+    onErase: setPendingErase,
+    owner,
   };
 
   return (
@@ -145,7 +161,7 @@ export default function AdminPage() {
        needs the extra width to keep names and notes off three lines. */
     <main className="mx-auto flex max-w-[80rem] flex-col gap-5 pt-8 page-inset">
       <AdminToolbar
-        entries={entries}
+        entries={onBoard}
         inRoom={allInRoom.length}
         beingHelped={beingHelped}
         email={session.email}
@@ -186,51 +202,85 @@ export default function AdminPage() {
         onResume={queue.resume}
         monthToClose={monthToClose}
         alerts={alerts}
+        mode={session.mode}
       />
 
       <QueueFilters
         query={filters.query}
-        onQuery={filters.setQuery}
+        onQuery={(value) => {
+          filters.setQuery(value);
+          page.reset();
+        }}
         triage={filters.triage}
-        onTriage={filters.setTriage}
-        incompleteOnly={filters.incompleteOnly}
-        onIncompleteOnly={filters.setIncompleteOnly}
-        incompleteCount={filters.incompleteCount}
+        onTriage={(value) => {
+          filters.setTriage(value);
+          page.reset();
+        }}
         filtering={filters.filtering}
         shown={filters.visible.length}
         total={entries.length}
-        onClear={filters.clear}
+        onClear={() => {
+          filters.clear();
+          page.reset();
+        }}
       />
 
       {/* The sync sits beside the sections rather than in the header: it is
         about the record these tables are kept in, not about the console. */}
       <div className="flex flex-wrap items-end justify-between gap-2 border-border border-b">
-        <QueueTabs
-          tabs={sections.map(({ id, label, rows }) => ({
-            id,
-            label,
-            count: rows.length,
-          }))}
-          active={shown.id}
-          onSelect={setSection}
-        />
-        {owner && (
-          <button
-            type="button"
-            className="btn-secondary mb-2 inline-flex items-center gap-2"
-            onClick={saveMonths}
-            disabled={entries.length === 0 || savingMonths}
-          >
-            <RefreshIcon
-              className={
-                savingMonths
-                  ? "animate-spin motion-reduce:animate-none"
+        {/* The sync follows the last tab rather than sitting at the other end
+          of the strip: it is about the record these tabs are kept in, and a
+          circular arrow beside the page steps would read as one of them. */}
+        <div className="flex flex-wrap items-end gap-2">
+          <QueueTabs
+            tabs={sections.map(({ id, label, rows }) => ({
+              id,
+              label,
+              count: rows.length,
+            }))}
+            active={shown.id}
+            onSelect={(id) => {
+              setSection(id);
+              // Another tab is another list, so it starts at its first page.
+              page.reset();
+            }}
+          />
+          {owner && (
+            // None of a button's furniture, so it does not read as a fifth
+            // tab — but it says what it does: an icon on its own next to five
+            // labelled tabs is a guess. Held to one width so the label
+            // changing to "Syncing…" does not resize it mid-press.
+            <button
+              type="button"
+              className="mb-2 inline-flex min-w-[8.5rem] items-center gap-2 border-0 bg-transparent p-0 pointer-fine:min-h-[1.9rem] text-meta font-semibold text-muted hover:text-text disabled:opacity-40"
+              onClick={saveMonths}
+              disabled={onBoard.length === 0 || savingMonths}
+              title={
+                onBoard.length === 0
+                  ? "Nothing to sync — the board is empty."
                   : undefined
               }
-            />
-            {savingMonths ? "Syncing…" : "Sync List"}
-          </button>
-        )}
+            >
+              <RefreshIcon
+                className={
+                  savingMonths
+                    ? "animate-spin motion-reduce:animate-none"
+                    : undefined
+                }
+              />
+              {savingMonths ? "Syncing…" : "Sync this month"}
+            </button>
+          )}
+        </div>
+        <Pagination
+          page={page.page}
+          pages={page.pages}
+          from={page.from}
+          to={page.to}
+          total={page.total}
+          onPage={page.setPage}
+          label={`${shown.label} pages`}
+        />
       </div>
 
       <section
@@ -271,6 +321,15 @@ export default function AdminPage() {
         onConfirm={(entry) => {
           setPendingDelete(null);
           queue.remove(entry);
+        }}
+      />
+
+      <EraseEntryDialog
+        entry={pendingErase}
+        onCancel={() => setPendingErase(null)}
+        onConfirm={(entry, confirm) => {
+          setPendingErase(null);
+          queue.purge(entry, confirm);
         }}
       />
 

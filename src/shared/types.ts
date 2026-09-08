@@ -20,7 +20,7 @@ export const PRIORITY_LABEL: Record<Priority, string> = {
 
 /**
  * Plain-English labels for the screen. The stored values stay new/pending/
- * resolved so the CSV and API keep their existing meaning.
+ * resolved so the exports and API keep their existing meaning.
  */
 export const STATUS_LABEL: Record<Status, string> = {
   new: "Waiting",
@@ -71,6 +71,8 @@ export type AdminEntry = QueueEntry &
     helpedBy: string;
     adminNote: string;
     priority: Priority;
+    /** When staff took it off the board, or "" while it is still on it. */
+    deletedAt: string;
   };
 
 /** The join response carries the visitor's own full name, unshortened. */

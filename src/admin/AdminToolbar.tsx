@@ -73,17 +73,17 @@ export default function AdminToolbar({
             </a>
           )}
           {/* Up here so a record can be taken without opening Google Sheets —
-            and the only way to get one when Sheets is not configured. Named
-            for what each one holds: "spreadsheet" and "workbook" are the same
-            word to most people, and the difference that matters is whether
-            the months already filed away are in it. */}
+            and the only way to get one when Sheets is not configured. Both
+            are Excel, so neither says so: the difference that matters is
+            whether the months already filed away are in it, and naming the
+            shared format only cost the room to stay beside the title. */}
           <button
             type="button"
             className="btn-secondary inline-flex items-center gap-2"
             onClick={onExport}
           >
             <DownloadIcon />
-            Download current list (CSV)
+            Download current list
           </button>
           {/* The record to keep, rather than the list to paste: every month
             the spreadsheet holds, each in its own tab. Owners only, and the
@@ -95,7 +95,7 @@ export default function AdminToolbar({
               onClick={onExportWorkbook}
             >
               <DownloadIcon />
-              Download all months (Excel)
+              Download all months
             </button>
           )}
           {/* The same red-on-surface as Remove: not destructive to anyone
@@ -112,8 +112,11 @@ export default function AdminToolbar({
       </div>
 
       <div className="flex flex-wrap gap-2">
+        {/* Held to the width of the longer label so the button does not
+          shrink to "Close" and drag whatever sits beside it sideways. */}
         <button
           type="button"
+          className="min-w-[10rem]"
           onClick={onToggleBooking}
           aria-expanded={showBooking}
         >
