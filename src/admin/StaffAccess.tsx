@@ -181,7 +181,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
         <div className="flex h-11 items-center pointer-coarse:h-12">
           <button
             type="submit"
-            className="pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
+            className="pointer-fine:min-h-9 px-3 py-1.5"
             disabled={busy || !email.trim()}
           >
             Add
@@ -205,7 +205,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
             {list.redundantRows.includes(owner) && (
               <button
                 type="button"
-                className="btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
+                className="btn-secondary pointer-fine:min-h-9 px-3 py-1.5"
                 disabled={busy}
                 onClick={() => setConfirming({ kind: "row", email: owner })}
               >
@@ -223,7 +223,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
             </span>
             <button
               type="button"
-              className="btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
+              className="btn-secondary pointer-fine:min-h-9 px-3 py-1.5"
               disabled={busy || member.email === list.you?.email}
               onClick={() =>
                 setConfirming({ kind: "remove", email: member.email })

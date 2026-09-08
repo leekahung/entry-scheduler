@@ -9,9 +9,9 @@ const BADGE_COLOR: Record<QueueEntry["status"], string> = {
 };
 
 const BADGE =
-  "whitespace-nowrap rounded-full border border-current px-2 py-[0.15rem] text-fine font-bold uppercase tracking-label";
+  "whitespace-nowrap rounded-full border border-current px-2 py-0.5 text-fine font-bold uppercase tracking-label";
 
-const ROW = "flex items-center gap-3 pointer-coarse:py-[0.15rem]";
+const ROW = "flex items-center gap-3 pointer-coarse:py-0.5";
 
 type Props = {
   /** Already filtered to the people actually in the line. */
@@ -42,7 +42,7 @@ export default function WaitingList({ waiting, loaded, mineId }: Props) {
         Currently waiting{loaded ? ` (${waiting.length})` : ""}
       </h2>
       <div className="relative">
-        <ul className="m-0 flex list-none flex-col gap-[0.4rem] p-0 kiosk:text-lead">
+        <ul className="m-0 flex list-none flex-col gap-1.5 p-0 kiosk:text-lead">
           {page.rows.map((entry) => (
             <li
               key={entry.id}

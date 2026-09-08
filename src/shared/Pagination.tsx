@@ -7,7 +7,7 @@
 // here and overridden: two utilities for one property are settled by the order
 // Tailwind emits them in, not the order they are written in.
 const BASE =
-  "rounded-md py-[0.15rem] pointer-fine:min-h-[1.9rem] text-meta font-semibold";
+  "rounded-md py-0.5 pointer-fine:min-h-[1.9rem] text-meta font-semibold";
 
 // No border and no fill: the steps read as words rather than boxes.
 // Transparent rather than surface-coloured so they disappear into the page as
@@ -17,7 +17,7 @@ const BASE =
 // hidden: the pair stays a fixed shape, and a step that is dimmed says the end
 // of the list has been reached, where one that vanished would say only that
 // something moved.
-const STEP = `${BASE} border-0 bg-transparent px-[0.6rem]`;
+const STEP = `${BASE} border-0 bg-transparent px-2.5`;
 // A step that goes somewhere is coloured and underlines under the pointer, the
 // same way a link says it can be followed — without a box or a fill, page text
 // in the page's own colour was a word nobody read as pressable.

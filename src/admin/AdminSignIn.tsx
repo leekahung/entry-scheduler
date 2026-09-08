@@ -71,7 +71,7 @@ export default function AdminSignIn({
           )}
           {session.attemptsLeft !== null &&
             session.attemptsLeft <= REMAINING_WARN_FROM && (
-              <p className="mx-0 mt-[-0.35rem] mb-0 text-meta text-caution">
+              <p className="mx-0 -mt-1.5 mb-0 text-meta text-caution">
                 {session.attemptsLeft === 0
                   ? "No attempts left — this device is now locked for 15 minutes."
                   : `${session.attemptsLeft} ${session.attemptsLeft === 1 ? "attempt" : "attempts"} left before this device is locked out for 15 minutes.`}

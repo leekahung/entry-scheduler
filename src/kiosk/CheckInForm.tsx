@@ -51,7 +51,7 @@ export default function CheckInForm({ onSubmit, onCancel, submitting }: Props) {
       {name.length >= NAME_COUNTER_FROM && (
         <p
           id="name-count"
-          className={`mt-[-0.25rem] mr-0 mb-0 ml-0 text-right text-meta ${name.length >= MAX_NAME ? "font-semibold text-new" : "text-muted"}`}
+          className={`-mt-1 mr-0 mb-0 ml-0 text-right text-meta ${name.length >= MAX_NAME ? "font-semibold text-new" : "text-muted"}`}
         >
           {name.length >= MAX_NAME
             ? `Character limit reached (${MAX_NAME})`
