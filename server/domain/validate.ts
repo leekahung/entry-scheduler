@@ -9,8 +9,8 @@ import {
   TIME_MAX,
 } from "../shared/codes.js";
 import {
-  DEFAULT_PRIORITY,
-  isPriority,
+  DEFAULT_VISIT_TYPE,
+  isVisitType,
   isStatus,
   type Booking,
   type EntryUpdate,
@@ -149,17 +149,23 @@ export function checkNewEntry(body: unknown): Checked<NewEntry> {
   });
 }
 
-/** Triage level and appointment time — the staff-only half of a booking. */
+/** Visit type, appointment time and helper — the staff-only half. */
 export function checkBooking(body: unknown): Checked<Booking> {
   const input = (body ?? {}) as Record<string, unknown>;
-  const priority = input.priority ?? DEFAULT_PRIORITY;
-  if (!isPriority(priority)) return bad("Unknown triage level.");
+  const visitType = input.visitType ?? DEFAULT_VISIT_TYPE;
+  if (!isVisitType(visitType)) return bad("Unknown visit type.");
 
   const scheduledFor = normalizeScheduledFor(trimmed(input.scheduledFor));
   if (scheduledFor === undefined) {
     return bad("Appointment time is not a valid date.");
   }
-  return ok({ priority, scheduledFor });
+
+  const raw = input.helpedBy ?? "";
+  if (typeof raw !== "string") return bad("Helped by must be text.");
+  const helpedBy = checkLength(raw.trim(), MAX_NAME, "Helped by");
+  if (!helpedBy.ok) return helpedBy;
+
+  return ok({ visitType, scheduledFor, helpedBy: helpedBy.value });
 }
 
 /**
@@ -173,7 +179,7 @@ export function checkUpdate(body: unknown): Checked<EntryUpdate> {
     helpedBy,
     adminNote,
     timeSpent,
-    priority,
+    visitType,
     scheduledFor,
     dob,
   } = input;
@@ -189,7 +195,7 @@ export function checkUpdate(body: unknown): Checked<EntryUpdate> {
   ] as const;
 
   const touched =
-    [status, helpedBy, adminNote, timeSpent, priority, scheduledFor, dob].some(
+    [status, helpedBy, adminNote, timeSpent, visitType, scheduledFor, dob].some(
       (value) => value !== undefined,
     ) ||
     input.phone !== undefined ||
@@ -240,9 +246,9 @@ export function checkUpdate(body: unknown): Checked<EntryUpdate> {
     update.timeSpent = timeSpent;
   }
 
-  if (priority !== undefined) {
-    if (!isPriority(priority)) return bad("Unknown triage level.");
-    update.priority = priority;
+  if (visitType !== undefined) {
+    if (!isVisitType(visitType)) return bad("Unknown visit type.");
+    update.visitType = visitType;
   }
 
   if (scheduledFor !== undefined) {

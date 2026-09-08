@@ -1,13 +1,13 @@
 import { Fragment } from "react";
 import { CASE_TYPE_LABEL } from "../../server/shared/codes";
 import {
-  PRIORITIES,
-  PRIORITY_LABEL,
   STATUS_LABEL,
   STATUSES,
+  VISIT_TYPES,
+  VISIT_TYPE_LABEL,
   type AdminEntry,
-  type Priority,
   type Status,
+  type VisitType,
 } from "../shared/types";
 import EntryEditor from "./EntryEditor";
 import type { Editing } from "../hooks/useEntryEditor";
@@ -22,7 +22,7 @@ const LONG_WAIT_MINUTES = 30;
 // from data-label.
 // Shape and spacing, without saying how the cell lays its contents out.
 const CELL_BASE =
-  "px-3 py-[0.7rem] text-left align-middle [overflow-wrap:anywhere] border-b border-row-line card-mode:border-0 card-mode:px-0 card-mode:py-[0.15rem]";
+  "px-3 py-3 text-left align-middle [overflow-wrap:anywhere] border-b border-row-line card-mode:border-0 card-mode:px-0 card-mode:py-0.5";
 
 // As a card, most cells put their label and value on one line.
 const CELL = `${CELL_BASE} card-mode:flex card-mode:items-baseline card-mode:gap-2`;
@@ -35,28 +35,32 @@ const NAME_CELL = `${CELL_BASE} card-mode:block`;
 const LABELLED_CELL = `${CELL} card-mode:before:block card-mode:before:flex-[0_0_5.5rem] card-mode:before:text-fine card-mode:before:font-bold card-mode:before:tracking-label card-mode:before:text-muted card-mode:before:uppercase card-mode:before:content-[attr(data-label)]`;
 
 const HEAD_CELL =
-  "px-3 pt-[0.7rem] pb-[0.4rem] text-left align-middle text-fine tracking-label text-muted uppercase border-b border-border";
+  "px-3 pt-3 pb-1.5 text-left align-middle text-fine tracking-label text-muted uppercase border-b border-border";
 
 // Fixed widths per action so the column does not reflow when a label changes
 // ("Edit" -> "Close").
 const ACTION =
-  "px-[0.6rem] py-[0.35rem] text-meta pointer-fine:min-h-[2rem] pointer-fine:px-2 pointer-fine:py-1 card-mode:min-w-[6rem] card-mode:flex-[1_1_auto] card-mode:px-3 card-mode:py-[0.6rem] card-mode:text-[0.95rem]";
+  "px-2.5 py-1.5 text-meta pointer-fine:min-h-8 pointer-fine:px-2 pointer-fine:py-1 card-mode:min-w-[6rem] card-mode:flex-[1_1_auto] card-mode:px-3 card-mode:py-2.5 card-mode:text-[0.95rem]";
 
 // Card mode turns every row into a card; the editor row gets the same shell
 // so it reads as part of the entry it belongs to.
+//
+// The card is a grid, not a stack: one field per line left most of a card's
+// width empty beside short values like a code or a select. `auto-fit` takes
+// as many columns as the card can hold, so a phone still gets one and a
+// tablet two or three. The `min()` keeps the track from ever being wider than
+// the card itself, which would push the content sideways on a narrow screen.
 const ROW =
-  "card-mode:mb-3 card-mode:block card-mode:rounded-xl card-mode:border card-mode:border-border card-mode:bg-surface card-mode:px-4 card-mode:py-[0.85rem]";
+  "card-mode:mb-3 card-mode:grid card-mode:grid-cols-[repeat(auto-fit,minmax(min(100%,17rem),1fr))] card-mode:items-start card-mode:gap-x-5 card-mode:rounded-xl card-mode:border card-mode:border-border card-mode:bg-surface card-mode:px-4 card-mode:py-3.5";
 
-const TRIAGE_COLOR: Record<Priority, string> = {
-  emergency: "text-emergency border-emergency",
-  urgent: "text-urgent",
-  routine: "",
-};
+// The card's title and its buttons take the full width; the labelled fields
+// in between are what share the columns.
+const FULL_WIDTH = "card-mode:[grid-column:1/-1]";
 
 // Two different voices under one name: what the visitor asked for, and what
 // staff wrote about it. Labelled so they are never confused.
 const NOTE =
-  "mt-1 block border-l-2 pl-[0.55rem] text-meta font-normal before:block before:text-fine before:font-bold before:tracking-label before:text-muted before:uppercase card-mode:text-meta";
+  "mt-1 block border-l-2 pl-2 text-meta font-normal before:block before:text-fine before:font-bold before:tracking-label before:text-muted before:uppercase card-mode:text-meta";
 
 type Props = {
   rows: AdminEntry[];
@@ -68,7 +72,7 @@ type Props = {
   onDraftChange: (draft: EditorDraft) => void;
   onToggleEdit: (entry: AdminEntry) => void;
   onStatus: (entry: AdminEntry, status: Status) => void;
-  onPriority: (entry: AdminEntry, priority: Priority) => void;
+  onVisitType: (entry: AdminEntry, visitType: VisitType) => void;
   onSave: (entry: AdminEntry, details: EntryChanges) => Promise<boolean>;
   onRemove: (entry: AdminEntry) => void;
   onRestore: (entry: AdminEntry) => void;
@@ -85,7 +89,7 @@ export default function QueueTable({
   onDraftChange,
   onToggleEdit,
   onStatus,
-  onPriority,
+  onVisitType,
   onSave,
   onRemove,
   onRestore,
@@ -114,9 +118,9 @@ export default function QueueTable({
           <th scope="col" className={`${HEAD_CELL} w-[8.5rem]`}>
             Case type
           </th>
-          {/* Fits "Emergency" plus the native dropdown arrow. */}
-          <th scope="col" className={`${HEAD_CELL} w-[8.25rem]`}>
-            Triage
+          {/* Fits the longer of the two labels plus the dropdown arrow. */}
+          <th scope="col" className={`${HEAD_CELL} w-[11.5rem]`}>
+            Visit type
           </th>
           <th scope="col" className={`${HEAD_CELL} w-[8rem]`}>
             Waiting
@@ -161,12 +165,12 @@ export default function QueueTable({
                 {/* Number and name read as the card's title instead of
                     labelled fields once the table collapses. */}
                 <td
-                  className={`${CELL} card-mode:pb-0 card-mode:text-[0.95rem] card-mode:font-bold card-mode:text-muted`}
+                  className={`${CELL} ${FULL_WIDTH} card-mode:pb-0 card-mode:text-[0.95rem] card-mode:font-bold card-mode:text-muted`}
                 >
                   #{entry.id}
                 </td>
                 <td
-                  className={`${NAME_CELL} font-semibold card-mode:pt-0 card-mode:pb-2 card-mode:text-lead`}
+                  className={`${NAME_CELL} ${FULL_WIDTH} font-semibold card-mode:pt-0 card-mode:pb-2 card-mode:text-lead`}
                 >
                   {entry.name}
                   {entry.note && (
@@ -199,21 +203,21 @@ export default function QueueTable({
                     <span className="text-muted">—</span>
                   )}
                 </td>
-                <td data-label="Triage" className={LABELLED_CELL}>
-                  {/* A select rather than a badge: retriaging is the whole
-                      point of a triage queue, so it should be one click. */}
+                <td data-label="Visit type" className={LABELLED_CELL}>
+                  {/* A select rather than a badge: someone who rang ahead can
+                      turn up in person, so it should be one click to change. */}
                   <select
-                    className={`pointer-fine:min-h-[2.25rem] px-[0.4rem] py-1 text-meta font-semibold card-mode:max-w-[12rem] ${TRIAGE_COLOR[entry.priority]}`}
-                    value={entry.priority}
+                    className="pointer-fine:min-h-9 px-1.5 py-1 text-meta font-semibold card-mode:max-w-[12rem]"
+                    value={entry.visitType}
                     onChange={(event) =>
-                      onPriority(entry, event.target.value as Priority)
+                      onVisitType(entry, event.target.value as VisitType)
                     }
-                    aria-label={`Triage level for ${entry.name}`}
+                    aria-label={`Visit type for ${entry.name}`}
                     disabled={Boolean(entry.deletedAt)}
                   >
-                    {PRIORITIES.map((level) => (
-                      <option key={level} value={level}>
-                        {PRIORITY_LABEL[level]}
+                    {VISIT_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {VISIT_TYPE_LABEL[type]}
                       </option>
                     ))}
                   </select>
@@ -228,7 +232,7 @@ export default function QueueTable({
                       </span>
                     )}
                     {/* How long they have been sitting there is the number
-                        staff triage on; the clock time is the reference. */}
+                        staff work from; the clock time is the reference. */}
                     {entry.status !== "resolved" && entry.due ? (
                       <>
                         <span
@@ -273,7 +277,7 @@ export default function QueueTable({
                 {/* The flex row lives in a wrapper: a <td> that is itself a
                     flex container stops being a real table cell, which breaks
                     the row separators. */}
-                <td className={`${CELL} card-mode:pt-[0.6rem]`}>
+                <td className={`${CELL} ${FULL_WIDTH} card-mode:pt-2.5`}>
                   <div className="flex flex-wrap items-center gap-2">
                     {entry.deletedAt ? (
                       <>
@@ -309,7 +313,7 @@ export default function QueueTable({
                           width:100%, which in this flex row would take the
                           whole line and push the two buttons off it. */}
                         <select
-                          className="w-auto flex-none min-w-[7.5rem] pointer-fine:min-h-[2.25rem] px-[0.4rem] py-1 text-meta font-semibold"
+                          className="w-auto flex-none min-w-[7.5rem] pointer-fine:min-h-9 px-1.5 py-1 text-meta font-semibold"
                           value={entry.status}
                           onChange={(event) =>
                             onStatus(entry, event.target.value as Status)
@@ -346,7 +350,7 @@ export default function QueueTable({
                 <tr className={`${ROW} card-mode:-mt-2`}>
                   <td
                     colSpan={7}
-                    className="bg-bg px-3 pt-[0.85rem] pb-4 card-mode:block card-mode:px-0 card-mode:py-[0.85rem]"
+                    className={`bg-bg px-3 pt-3.5 pb-4 ${FULL_WIDTH} card-mode:block card-mode:px-0 card-mode:py-3.5`}
                   >
                     <EntryEditor
                       entry={entry}

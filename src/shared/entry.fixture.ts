@@ -21,7 +21,7 @@ export const makeAdminEntry = (
   appointmentOutcome: "",
   legalOutcome: "",
   timeSpent: 0,
-  priority: "routine",
+  visitType: "in-person",
   deletedAt: "",
   scheduledFor: "",
   ...overrides,

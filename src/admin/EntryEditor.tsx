@@ -12,20 +12,35 @@ import {
 } from "../../server/shared/codes";
 import { MAX_ADMIN_NOTE, MAX_NAME } from "../../server/shared/limits";
 import {
-  PRIORITIES,
-  PRIORITY_LABEL,
+  VISIT_TYPES,
+  VISIT_TYPE_LABEL,
   type AdminEntry,
   type CaseDetails,
-  type Priority,
+  type VisitType,
 } from "../shared/types";
 import ConfirmDialog from "./ConfirmDialog";
 import { useDiscardGuard } from "../hooks/useDiscardGuard";
 import { CodeSelect, DobField, PhoneField } from "../shared/fields";
+import { isCompleteUsPhone } from "../shared/phone";
 import { fromLocalInput } from "../shared/time";
 import type { EntryChanges } from "../hooks/useEntries";
 
 /** The form's own shape: every field a string or code the inputs can hold. */
 import type { EditorDraft } from "./editorDraft";
+
+// The log needs a date of birth and a phone number on every row; the rest of
+// the sheet is filled in as the visit goes. A field is tinted only while it
+// is still empty, so the colour marks work left to do rather than labelling
+// the field for good — and never by colour alone: the two that must be filled
+// in are also marked `required`, and the legend below says so in words.
+const MUST_FILL = "bg-alert-surface border-alert-border";
+const OPTIONAL = "bg-caution-surface border-caution-border";
+
+const tint = (filled: boolean, tone: string) => (filled ? "" : tone);
+
+// The editor stacks its labels above their fields, unlike the forms that let
+// them sit inline, so every field here passes the same one.
+const LABEL = "my-2 block";
 
 type Props = {
   entry: AdminEntry;
@@ -63,7 +78,10 @@ export default function EntryEditor({
 
   const guard = useDiscardGuard(dirty, onCancel);
 
-  async function handleSave() {
+  async function handleSubmit(event: React.FormEvent) {
+    // The browser has already held the required fields to their rules; this
+    // only runs once they pass.
+    event.preventDefault();
     setSaving(true);
     // Only what changed: this draft was seeded when the editor opened, so
     // sending untouched fields would overwrite whatever anyone else saved
@@ -88,9 +106,13 @@ export default function EntryEditor({
   }
 
   return (
-    <>
-      <p className="mx-0 mt-0 mb-[0.6rem] font-bold">
+    <form onSubmit={handleSubmit}>
+      <p className="mx-0 mt-0 mb-2.5 font-bold">
         Editing #{entry.id} · {entry.name}
+      </p>
+      <p className="mx-0 mt-0 mb-3 text-meta text-muted">
+        Date of birth and phone number are needed on every row. Everything else
+        can be left blank and filled in later.
       </p>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
@@ -99,7 +121,9 @@ export default function EntryEditor({
             id={`dob-${entry.id}`}
             value={draft.dob}
             onChange={(value) => set("dob", value)}
-            labelClassName="my-2 block"
+            labelClassName={LABEL}
+            inputClassName={tint(Boolean(draft.dob.trim()), MUST_FILL)}
+            required
           />
         </div>
         <div className="flex field flex-col gap-2">
@@ -107,7 +131,10 @@ export default function EntryEditor({
             id={`phone-${entry.id}`}
             value={draft.phone}
             onChange={(value) => set("phone", value)}
-            labelClassName="my-2 block"
+            labelClassName={LABEL}
+            inputClassName={tint(isCompleteUsPhone(draft.phone), MUST_FILL)}
+            required
+            pattern="\d{3}-\d{3}-\d{4}"
           />
         </div>
       </div>
@@ -120,7 +147,8 @@ export default function EntryEditor({
             value={draft.gender}
             codes={GENDERS}
             onChange={(value) => set("gender", value)}
-            labelClassName="my-2 block"
+            labelClassName={LABEL}
+            inputClassName={tint(Boolean(draft.gender), OPTIONAL)}
           />
         </div>
         <div className="flex field flex-col gap-2">
@@ -131,17 +159,18 @@ export default function EntryEditor({
             codes={CASE_TYPES_BY_LABEL}
             labelFor={(type) => CASE_TYPE_LABEL[type]}
             onChange={(value) => set("caseType", value)}
-            labelClassName="my-2 block"
+            labelClassName={LABEL}
+            inputClassName={tint(Boolean(draft.caseType), OPTIONAL)}
           />
         </div>
       </div>
 
-      <label className="my-2 block" htmlFor={`helper-${entry.id}`}>
+      <label className={LABEL} htmlFor={`helper-${entry.id}`}>
         Helped by
       </label>
       <input
         id={`helper-${entry.id}`}
-        className="mb-3 max-w-[18rem]"
+        className={`mb-3 max-w-[18rem] ${tint(Boolean(draft.helpedBy.trim()), OPTIONAL)}`}
         value={draft.helpedBy}
         onChange={(event) => set("helpedBy", event.target.value)}
         maxLength={MAX_NAME}
@@ -152,30 +181,31 @@ export default function EntryEditor({
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
         <div className="flex field flex-col gap-2">
-          <label className="my-2 block" htmlFor={`when-${entry.id}`}>
+          <label className={LABEL} htmlFor={`when-${entry.id}`}>
             Appointment time
           </label>
           <input
             id={`when-${entry.id}`}
             type="datetime-local"
+            className={tint(Boolean(draft.scheduledFor), OPTIONAL)}
             value={draft.scheduledFor}
             onChange={(event) => set("scheduledFor", event.target.value)}
           />
         </div>
         <div className="flex field flex-col gap-2">
-          <label className="my-2 block" htmlFor={`priority-${entry.id}`}>
-            Triage level
+          <label className={LABEL} htmlFor={`visitType-${entry.id}`}>
+            Visit type
           </label>
           <select
-            id={`priority-${entry.id}`}
-            value={draft.priority}
+            id={`visitType-${entry.id}`}
+            value={draft.visitType}
             onChange={(event) =>
-              set("priority", event.target.value as Priority)
+              set("visitType", event.target.value as VisitType)
             }
           >
-            {PRIORITIES.map((level) => (
-              <option key={level} value={level}>
-                {PRIORITY_LABEL[level]}
+            {VISIT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {VISIT_TYPE_LABEL[type]}
               </option>
             ))}
           </select>
@@ -190,7 +220,8 @@ export default function EntryEditor({
             value={draft.appointmentType}
             codes={APPOINTMENT_TYPES}
             onChange={(value) => set("appointmentType", value)}
-            labelClassName="my-2 block"
+            labelClassName={LABEL}
+            inputClassName={tint(Boolean(draft.appointmentType), OPTIONAL)}
           />
         </div>
         <div className="flex field flex-col gap-2">
@@ -200,18 +231,20 @@ export default function EntryEditor({
             value={draft.appointmentOutcome}
             codes={APPOINTMENT_OUTCOMES}
             onChange={(value) => set("appointmentOutcome", value)}
-            labelClassName="my-2 block"
+            labelClassName={LABEL}
+            inputClassName={tint(Boolean(draft.appointmentOutcome), OPTIONAL)}
           />
         </div>
       </div>
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
         <div className="flex field flex-col gap-2">
-          <label className="my-2 block" htmlFor={`legalOutcome-${entry.id}`}>
+          <label className={LABEL} htmlFor={`legalOutcome-${entry.id}`}>
             Legal outcome
           </label>
           <select
             id={`legalOutcome-${entry.id}`}
+            className={tint(Boolean(draft.legalOutcome), OPTIONAL)}
             value={draft.legalOutcome}
             onChange={(event) =>
               set(
@@ -233,22 +266,29 @@ export default function EntryEditor({
           </select>
         </div>
         <div className="flex field flex-col gap-2">
-          <label className="my-2 block" htmlFor={`time-${entry.id}`}>
+          <label className={LABEL} htmlFor={`time-${entry.id}`}>
             Time (hours, 0.25 steps)
           </label>
           <input
             id={`time-${entry.id}`}
             type="number"
+            className={tint(Number(draft.timeSpent) > 0, OPTIONAL)}
             value={draft.timeSpent}
             onChange={(event) => set("timeSpent", event.target.value)}
             min={0}
             max={TIME_MAX}
             step={TIME_STEP}
+            aria-describedby={`time-hint-${entry.id}`}
           />
+          <p id={`time-hint-${entry.id}`} className="m-0 text-meta text-muted">
+            {Number(draft.timeSpent) > 0
+              ? "Recorded."
+              : "Still to record — add the hours once the visit is done."}
+          </p>
         </div>
       </div>
 
-      <label className="my-2 block" htmlFor={`note-${entry.id}`}>
+      <label className={LABEL} htmlFor={`note-${entry.id}`}>
         Admin note
       </label>
       <textarea
@@ -274,11 +314,12 @@ export default function EntryEditor({
           Cancel
         </button>
         <button
-          type="button"
+          type="submit"
           className="card-mode:flex-1"
-          onClick={handleSave}
           // The server refuses an empty update, so offering Save on an
-          // untouched row would answer a no-op with a failure message.
+          // untouched row would answer a no-op with a failure message. What is
+          // missing from a required field is the browser's to report, not
+          // something to disable the button over.
           disabled={saving || !dirty}
         >
           {saving ? "Saving…" : "Save changes"}
@@ -294,6 +335,6 @@ export default function EntryEditor({
         onConfirm={guard.discard}
         onCancel={guard.keepEditing}
       />
-    </>
+    </form>
   );
 }

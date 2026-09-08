@@ -23,20 +23,33 @@ describe("isDue", () => {
 });
 
 describe("queueOrder", () => {
-  it("puts a more urgent entry first", () => {
+  it("puts remote first when two entries are due at the same moment", () => {
     expect(
       order([
         makeEntry({ id: 1, createdAt: "2026-08-17T09:00:00.000Z" }),
         makeEntry({
           id: 2,
-          priority: "emergency",
-          createdAt: "2026-08-17T11:00:00.000Z",
+          visitType: "remote",
+          createdAt: "2026-08-17T09:00:00.000Z",
         }),
       ]),
     ).toEqual([2, 1]);
   });
 
-  it("keeps arrival order within one triage level", () => {
+  it("leaves an earlier walk-in ahead of a later remote entry", () => {
+    expect(
+      order([
+        makeEntry({ id: 1, createdAt: "2026-08-17T09:00:00.000Z" }),
+        makeEntry({
+          id: 2,
+          visitType: "remote",
+          createdAt: "2026-08-17T11:00:00.000Z",
+        }),
+      ]),
+    ).toEqual([1, 2]);
+  });
+
+  it("keeps arrival order", () => {
     expect(
       order([
         makeEntry({ id: 2, createdAt: "2026-08-17T10:00:00.000Z" }),
@@ -60,11 +73,11 @@ describe("queueOrder", () => {
     ).toEqual([1, 2, 3]);
   });
 
-  it("holds an undue appointment at the back whatever its triage", () => {
+  it("holds an undue appointment at the back whatever its visit type", () => {
     const walkIn = makeEntry({ id: 1, createdAt: "2026-08-17T11:00:00.000Z" });
     const undue = makeEntry({
       id: 2,
-      priority: "emergency",
+      visitType: "remote",
       scheduledFor: "2026-08-17T15:00:00.000Z",
     });
 
@@ -77,19 +90,17 @@ describe("queueOrder", () => {
     expect(order([walkIn, undue])).toEqual([1, 2]);
   });
 
-  it("lets that same appointment take the front once it is due", () => {
+  it("takes that same appointment into the line once it is due", () => {
     const rows = [
       makeEntry({ id: 1, createdAt: "2026-08-17T11:00:00.000Z" }),
-      makeEntry({
-        id: 2,
-        priority: "emergency",
-        scheduledFor: "2026-08-17T15:00:00.000Z",
-      }),
+      makeEntry({ id: 2, scheduledFor: "2026-08-17T15:00:00.000Z" }),
+      makeEntry({ id: 3, createdAt: "2026-08-17T16:00:00.000Z" }),
     ];
-    expect([...rows].sort(queueOrder(at("2026-08-17T15:00:00.000Z")))).toEqual([
-      rows[1],
-      rows[0],
-    ]);
+    // No longer pinned to the back: it sits by its start time, behind the
+    // morning walk-in and ahead of whoever arrived after it.
+    expect([...rows].sort(queueOrder(at("2026-08-17T16:30:00.000Z")))).toEqual(
+      rows,
+    );
   });
 
   it("orders undue appointments among themselves by start time", () => {
@@ -118,14 +129,14 @@ describe("queueOrder", () => {
     // The contract Array.sort relies on. An inconsistent comparator still
     // produces *an* order, so this is the only thing that catches one.
     const rows = [
-      makeEntry({ id: 1, priority: "urgent" }),
+      makeEntry({ id: 1, visitType: "remote" }),
       makeEntry({ id: 2, scheduledFor: "2026-08-17T15:00:00.000Z" }),
-      makeEntry({ id: 3, priority: "emergency" }),
+      makeEntry({ id: 3, visitType: "remote" }),
       makeEntry({ id: 4 }),
       makeEntry({ id: 5, scheduledFor: "2026-08-17T09:00:00.000Z" }),
       makeEntry({
         id: 6,
-        priority: "emergency",
+        visitType: "remote",
         scheduledFor: "2026-08-17T18:00:00.000Z",
       }),
     ];
@@ -143,9 +154,9 @@ describe("queueOrder", () => {
 
   it("is transitive, so the order cannot cycle", () => {
     const rows = [
-      makeEntry({ id: 1, priority: "urgent" }),
+      makeEntry({ id: 1, visitType: "remote" }),
       makeEntry({ id: 2, scheduledFor: "2026-08-17T15:00:00.000Z" }),
-      makeEntry({ id: 3, priority: "emergency" }),
+      makeEntry({ id: 3, visitType: "remote" }),
       makeEntry({ id: 4 }),
     ];
     const cmp = queueOrder(NOON);

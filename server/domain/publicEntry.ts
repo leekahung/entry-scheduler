@@ -16,9 +16,10 @@ export function publicName(name: string): string {
 
 /**
  * Public view of an entry — no admin-only bookkeeping fields, no full name.
- * The triage level stays private: the board is visible to everyone waiting,
- * and labelling who was bumped ahead invites exactly the argument staff don't
- * need. The order itself already reflects it.
+ * The visit type stays private: the board is visible to everyone waiting, and
+ * labelling who was called first invites exactly the argument staff don't
+ * need — it only decides who goes first among people due at the same moment,
+ * which is the hardest kind of ordering to explain across a room.
  */
 export function publicView(entry: Entry, now = Date.now()) {
   return {

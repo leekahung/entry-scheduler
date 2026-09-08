@@ -25,7 +25,7 @@ const show = (editing: Editing | null, rows: AdminEntry[] = [ADA, BO]) =>
       onDraftChange={() => {}}
       onToggleEdit={() => {}}
       onStatus={() => {}}
-      onPriority={() => {}}
+      onVisitType={() => {}}
       onSave={vi.fn(async () => true)}
       onRemove={() => {}}
       onRestore={() => {}}
@@ -79,7 +79,7 @@ describe("which row is open for editing", () => {
         onDraftChange={() => {}}
         onToggleEdit={() => {}}
         onStatus={() => {}}
-        onPriority={() => {}}
+        onVisitType={() => {}}
         onSave={vi.fn(async () => true)}
         onRemove={() => {}}
         onRestore={() => {}}
@@ -108,7 +108,7 @@ describe("moving a row between states", () => {
         onDraftChange={() => {}}
         onToggleEdit={() => {}}
         onStatus={onStatus}
-        onPriority={() => {}}
+        onVisitType={() => {}}
         onSave={vi.fn(async () => true)}
         onRemove={() => {}}
         onRestore={() => {}}
@@ -185,7 +185,7 @@ describe("a row that has been removed", () => {
         onDraftChange={() => {}}
         onToggleEdit={() => {}}
         onStatus={onStatus}
-        onPriority={() => {}}
+        onVisitType={() => {}}
         onSave={vi.fn(async () => true)}
         onRemove={() => {}}
         onRestore={onRestore}
@@ -218,9 +218,9 @@ describe("a row that has been removed", () => {
     expect(onErase).toHaveBeenCalledWith(GONE);
   });
 
-  it("does not offer to retriage something off the board", () => {
+  it("does not offer to change the visit type of something off the board", () => {
     showRemoved(false);
-    const triage = screen.getByLabelText("Triage level for Di");
-    expect((triage as HTMLSelectElement).disabled).toBe(true);
+    const select = screen.getByLabelText("Visit type for Di");
+    expect((select as HTMLSelectElement).disabled).toBe(true);
   });
 });

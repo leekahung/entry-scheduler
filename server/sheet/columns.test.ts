@@ -17,7 +17,7 @@ describe("the sheet as a record format", () => {
       caseType: "Housing/Eviction",
       appointmentType: "Consult",
       timeSpent: 0.75,
-      priority: "urgent",
+      visitType: "remote",
       scheduledFor: "2026-08-20T14:00:00.000Z",
     });
     expect(fromSheetValues(toSheetValues([entry]))).toEqual([entry]);
@@ -111,11 +111,11 @@ describe("the sheet as a record format", () => {
   it("falls back to safe values when a cell has been hand-edited to nonsense", () => {
     const [header, row] = toSheetValues([makeEntry({ id: 1 })]);
     row[header.indexOf("Status")] = "banana";
-    row[header.indexOf("Priority")] = "";
+    row[header.indexOf("Visit Type")] = "";
     row[header.indexOf("Time (0.25 increments)")] = "not a number";
     const [entry] = fromSheetValues([header, row]);
     expect(entry.status).toBe("new");
-    expect(entry.priority).toBe("routine");
+    expect(entry.visitType).toBe("in-person");
     expect(entry.timeSpent).toBe(0);
   });
 });

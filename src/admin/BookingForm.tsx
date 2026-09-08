@@ -7,7 +7,7 @@ import {
   type Gender,
 } from "../../server/shared/codes";
 import { MAX_NAME, MAX_NOTE } from "../../server/shared/limits";
-import { PRIORITIES, PRIORITY_LABEL, type Priority } from "../shared/types";
+import { VISIT_TYPES, VISIT_TYPE_LABEL, type VisitType } from "../shared/types";
 import ConfirmDialog from "./ConfirmDialog";
 import { useDiscardGuard } from "../hooks/useDiscardGuard";
 import { CodeSelect, DobField, PhoneField } from "../shared/fields";
@@ -18,7 +18,8 @@ const BLANK = {
   name: "",
   note: "",
   scheduledFor: "",
-  priority: "routine" as Priority,
+  visitType: "in-person" as VisitType,
+  helpedBy: "",
   caseType: "" as CaseType | "",
   phone: "",
   dob: "",
@@ -53,6 +54,7 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
       name: draft.name.trim(),
       note: draft.note.trim(),
       phone: draft.phone.trim(),
+      helpedBy: draft.helpedBy.trim(),
       scheduledFor: fromLocalInput(draft.scheduledFor),
     });
     setSaving(false);
@@ -94,20 +96,30 @@ export default function BookingForm({ onSubmit, onCancel }: Props) {
 
       <div className="flex flex-wrap gap-x-3 gap-y-2">
         <div className="flex field flex-col gap-2">
-          <label htmlFor="booking-priority">Triage level</label>
+          <label htmlFor="booking-visit-type">Visit type</label>
           <select
-            id="booking-priority"
-            value={draft.priority}
+            id="booking-visit-type"
+            value={draft.visitType}
             onChange={(event) =>
-              set("priority", event.target.value as Priority)
+              set("visitType", event.target.value as VisitType)
             }
           >
-            {PRIORITIES.map((level) => (
-              <option key={level} value={level}>
-                {PRIORITY_LABEL[level]}
+            {VISIT_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {VISIT_TYPE_LABEL[type]}
               </option>
             ))}
           </select>
+        </div>
+        <div className="flex field flex-col gap-2">
+          <label htmlFor="booking-helped-by">Helped by</label>
+          <input
+            id="booking-helped-by"
+            value={draft.helpedBy}
+            onChange={(event) => set("helpedBy", event.target.value)}
+            maxLength={MAX_NAME}
+            placeholder="Who will see them, e.g. Kim"
+          />
         </div>
         <div className="flex field flex-col gap-2">
           <PhoneField

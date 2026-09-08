@@ -1,8 +1,8 @@
 import { LOG_COLUMNS } from "./log.js";
 import { fromStamp, toStamp } from "./stamp.js";
 import {
-  DEFAULT_PRIORITY,
-  isPriority,
+  DEFAULT_VISIT_TYPE,
+  isVisitType,
   isStatus,
   type Entry,
 } from "../domain/entry.js";
@@ -120,12 +120,12 @@ const STATE_COLUMNS: readonly Column[] = [
     ["helpedBy"],
   ],
   [
-    "Priority",
-    (e) => e.priority,
+    "Visit Type",
+    (e) => e.visitType,
     (e, raw) => {
-      e.priority = isPriority(raw) ? raw : DEFAULT_PRIORITY;
+      e.visitType = isVisitType(raw) ? raw : DEFAULT_VISIT_TYPE;
     },
-    ["priority"],
+    ["visitType"],
   ],
   [
     "Appointment Time",
@@ -181,7 +181,7 @@ export function blankEntry(): Entry {
     appointmentOutcome: "",
     legalOutcome: "",
     timeSpent: 0,
-    priority: DEFAULT_PRIORITY,
+    visitType: DEFAULT_VISIT_TYPE,
     scheduledFor: "",
     deletedAt: "",
   };

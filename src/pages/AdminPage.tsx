@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import type { AdminEntry, Priority, Status } from "../shared/types";
+import type { AdminEntry, Status, VisitType } from "../shared/types";
 import { downloadCurrentList, downloadWorkbook } from "../shared/api";
+import ScrollToTop from "../shared/ScrollToTop";
 import { ToastList, useToasts } from "../shared/toasts";
 import AdminBanners from "../admin/AdminBanners";
 import AdminSignIn from "../admin/AdminSignIn";
@@ -143,8 +144,8 @@ export default function AdminPage() {
     onToggleEdit: (entry: AdminEntry) => editor.toggle(entry, helpedBy.trim()),
     onStatus: (entry: AdminEntry, status: Status) =>
       queue.setStatus(entry, status, helpedBy.trim()),
-    onPriority: (entry: AdminEntry, priority: Priority) =>
-      queue.setPriority(entry, priority),
+    onVisitType: (entry: AdminEntry, visitType: VisitType) =>
+      queue.setVisitType(entry, visitType),
     onSave: async (entry: AdminEntry, details: EntryChanges) => {
       const saved = await queue.saveDetails(entry, details);
       if (saved) editor.close();
@@ -211,9 +212,9 @@ export default function AdminPage() {
           filters.setQuery(value);
           page.reset();
         }}
-        triage={filters.triage}
-        onTriage={(value) => {
-          filters.setTriage(value);
+        visitType={filters.visitType}
+        onVisitType={(value) => {
+          filters.setVisitType(value);
           page.reset();
         }}
         filtering={filters.filtering}
@@ -334,6 +335,7 @@ export default function AdminPage() {
       />
 
       <ToastList toasts={toasts.toasts} onDismiss={toasts.dismiss} />
+      <ScrollToTop />
     </main>
   );
 }

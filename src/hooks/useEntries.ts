@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePoll } from "./usePoll";
 import type { ToastLabels, Toasts } from "../shared/toasts";
+import { VISIT_TYPE_LABEL } from "../shared/types";
 import type {
   AdminEntry,
   CaseDetails,
   Intake,
-  Priority,
   Status,
+  VisitType,
 } from "../shared/types";
 import {
   ApiError,
@@ -18,7 +19,7 @@ import {
   fetchAdminAlerts,
   fetchAllEntries,
   updateDetails,
-  updatePriority,
+  updateVisitType,
   updateStatus,
   type AdminAlerts,
 } from "../shared/api";
@@ -66,7 +67,7 @@ const STATUS_SAID: Record<Status, (id: number, from: Status) => string> = {
 export type EntryDetails = {
   helpedBy: string;
   adminNote: string;
-  priority: Priority;
+  visitType: VisitType;
   scheduledFor: string;
 } & Intake &
   CaseDetails;
@@ -195,19 +196,19 @@ export function useEntries(
         },
       ),
 
-    setPriority: (entry: AdminEntry, priority: Priority) =>
+    setVisitType: (entry: AdminEntry, visitType: VisitType) =>
       run(
         {
-          pending: `Retriaging #${entry.id}\u2026`,
-          success: `#${entry.id} set to ${priority}.`,
+          pending: `Updating #${entry.id}\u2026`,
+          success: `#${entry.id} set to ${VISIT_TYPE_LABEL[visitType]}.`,
           failure: {
             fallback: "The server couldn't change that. Nothing was changed.",
             gone: goneFrom(entry.id),
           },
         },
         async () => {
-          replace(await updatePriority(passcode, entry.id, priority));
-          // Retriaging moves the row, and only the server decides where to.
+          replace(await updateVisitType(passcode, entry.id, visitType));
+          // The change can move the row, and only the server decides where to.
           await refresh();
         },
       ),

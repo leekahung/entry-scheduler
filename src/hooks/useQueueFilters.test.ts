@@ -13,7 +13,7 @@ const ROWS = [
     appointmentOutcome: "Completed",
     timeSpent: 0.5,
   }),
-  makeAdminEntry({ id: 2, name: "Grace Hopper", priority: "urgent" }),
+  makeAdminEntry({ id: 2, name: "Grace Hopper", visitType: "remote" }),
   makeAdminEntry({ id: 3, name: "Katherine Johnson" }),
 ];
 
@@ -51,15 +51,15 @@ describe("filtering the queue", () => {
     expect(result.current.filtering).toBe(false);
   });
 
-  it("narrows to one triage level", () => {
+  it("narrows to one visit type", () => {
     const { result } = renderHook(() => useQueueFilters(ROWS));
-    act(() => result.current.setTriage("urgent"));
+    act(() => result.current.setVisitType("remote"));
     expect(idsOf(result.current.visible)).toEqual([2]);
   });
 
   it("combines the filters rather than replacing one with the next", () => {
     const { result } = renderHook(() => useQueueFilters(ROWS));
-    act(() => result.current.setTriage("urgent"));
+    act(() => result.current.setVisitType("remote"));
     act(() => result.current.setQuery("Grace"));
     expect(idsOf(result.current.visible)).toEqual([2]);
   });
@@ -67,12 +67,12 @@ describe("filtering the queue", () => {
   it("puts every filter back at once", () => {
     const { result } = renderHook(() => useQueueFilters(ROWS));
     act(() => result.current.setQuery("Ada"));
-    act(() => result.current.setTriage("routine"));
+    act(() => result.current.setVisitType("in-person"));
 
     act(() => result.current.clear());
     expect(idsOf(result.current.visible)).toEqual([1, 2, 3]);
     expect(result.current.filtering).toBe(false);
     expect(result.current.query).toBe("");
-    expect(result.current.triage).toBe("");
+    expect(result.current.visitType).toBe("");
   });
 });

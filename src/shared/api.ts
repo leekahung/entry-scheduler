@@ -4,13 +4,13 @@ import type {
   CaseDetails,
   Intake,
   JoinedEntry,
-  Priority,
   QueueEntry,
   StaffMember,
   StaffList,
   StaffRole,
   Status,
   VisitorIntake,
+  VisitType,
 } from "./types";
 
 /** A failed request, carrying the status so 401 and 429 can be told apart. */
@@ -63,7 +63,8 @@ export async function bookEntry(
     name: string;
     note: string;
     scheduledFor: string;
-    priority: Priority;
+    visitType: VisitType;
+    helpedBy: string;
   } & Intake,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
@@ -233,7 +234,7 @@ export async function updateStatus(
 
 /**
  * Saves the per-entry fields an admin can correct after the fact.
- * Partial for the same reason as updatePriority below: the editor's draft is
+ * Partial for the same reason as updateVisitType below: the editor's draft is
  * seeded when it opens, so sending every field would push minutes-old values
  * back over whatever another admin changed in the meantime.
  */
@@ -244,7 +245,7 @@ export async function updateDetails(
     {
       helpedBy: string;
       adminNote: string;
-      priority: Priority;
+      visitType: VisitType;
       scheduledFor: string;
     } & Intake &
       CaseDetails
@@ -259,17 +260,17 @@ export async function updateDetails(
   );
 }
 
-/** Patches only the triage level. */
-export async function updatePriority(
+/** Patches only the visit type. */
+export async function updateVisitType(
   passcode: string,
   id: number,
-  priority: Priority,
+  visitType: VisitType,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
     await fetch(`/api/entries/${id}`, {
       method: "PATCH",
       headers: adminHeaders(passcode),
-      body: JSON.stringify({ priority }),
+      body: JSON.stringify({ visitType }),
     }),
   );
 }

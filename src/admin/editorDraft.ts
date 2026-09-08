@@ -2,8 +2,9 @@ import type {
   AdminEntry,
   CaseDetails,
   Intake,
-  Priority,
+  VisitType,
 } from "../shared/types";
+import { formatUsPhone } from "../shared/phone";
 import { toLocalInput } from "../shared/time";
 
 export type EditorDraft = {
@@ -13,7 +14,7 @@ export type EditorDraft = {
   appointmentOutcome: CaseDetails["appointmentOutcome"];
   legalOutcome: CaseDetails["legalOutcome"];
   timeSpent: string;
-  priority: Priority;
+  visitType: VisitType;
   dob: string;
   gender: Intake["gender"];
   phone: string;
@@ -37,10 +38,10 @@ export function seedDraft(entry: AdminEntry, helper = ""): EditorDraft {
     // Kept as typed: "1." is momentarily unparseable, and coercing it to a
     // number here would rewrite the field to 0 before the user reached "1.5".
     timeSpent: String(entry.timeSpent),
-    priority: entry.priority,
+    visitType: entry.visitType,
     dob: entry.dob,
     gender: entry.gender,
-    phone: entry.phone,
+    phone: formatUsPhone(entry.phone),
     caseType: entry.caseType,
     // Held in the input's local format; converted back to ISO on save.
     scheduledFor: toLocalInput(entry.scheduledFor),

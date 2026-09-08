@@ -595,7 +595,7 @@ describe("sign-in log fields", () => {
   });
 });
 
-describe("triage and appointments", () => {
+describe("visit type and appointments", () => {
   const book = (body: Record<string, unknown>) =>
     asAdmin(request(server).post("/api/admin/entries")).send(body);
 
@@ -604,39 +604,45 @@ describe("triage and appointments", () => {
       (entry: { id: number }) => entry.id,
     );
 
-  it("orders the queue by triage level before arrival", async () => {
-    const first = await join("Ada");
-    const second = await join("Grace");
-    await asAdmin(request(server).patch(`/api/entries/${second}`)).send({
-      priority: "emergency",
-    });
-
-    expect(await queueIds()).toEqual([second, first]);
-  });
-
-  it("serves the queue in arrival order within one triage level", async () => {
+  it("serves the queue in arrival order within one visit type", async () => {
     const first = await join("Ada");
     const second = await join("Grace");
     expect(await queueIds()).toEqual([first, second]);
   });
 
-  it("defaults a walk-in to routine", async () => {
-    await join("Ada");
-    expect((await store.list())[0].priority).toBe("routine");
+  it("puts remote first among appointments due at the same moment", async () => {
+    // Whole seconds: the sheet's stamps carry no milliseconds, so a time with
+    // them ties before the round-trip and not after.
+    const at = new Date(
+      Math.floor(Date.now() / 1000) * 1000 - 60_000,
+    ).toISOString();
+    const walkIn = await book({ name: "Ada", scheduledFor: at });
+    const remote = await book({
+      name: "Grace",
+      scheduledFor: at,
+      visitType: "remote",
+    });
+
+    expect(await queueIds()).toEqual([remote.body.id, walkIn.body.id]);
   });
 
-  it("will not let a visitor set their own triage level", async () => {
+  it("defaults a walk-in to in-person", async () => {
+    await join("Ada");
+    expect((await store.list())[0].visitType).toBe("in-person");
+  });
+
+  it("will not let a visitor set their own visit type", async () => {
     const res = await request(server)
       .post("/api/entries")
-      .send({ name: "Ada", priority: "emergency" });
+      .send({ name: "Ada", visitType: "remote" });
     expect(res.status).toBe(201);
-    expect((await store.list())[0].priority).toBe("routine");
+    expect((await store.list())[0].visitType).toBe("in-person");
   });
 
-  it("keeps the triage level off the public board", async () => {
+  it("keeps the visit type off the public board", async () => {
     await join("Ada");
     const res = await request(server).get("/api/queue");
-    expect(res.body[0]).not.toHaveProperty("priority");
+    expect(res.body[0]).not.toHaveProperty("visitType");
   });
 
   it("slots an appointment into the line at its start time", async () => {
@@ -661,40 +667,40 @@ describe("triage and appointments", () => {
     expect(await queueIds()).toEqual([earlier.body.id, walkIn]);
   });
 
-  it("keeps an urgent appointment at the back until it is due", async () => {
+  it("keeps an appointment at the back until it is due", async () => {
     // Otherwise the board announces someone who has not arrived yet as next.
     const walkIn = await join("Ada");
     const soon = await book({
       name: "Grace",
-      priority: "emergency",
+      visitType: "remote",
       scheduledFor: new Date(Date.now() + 3_600_000).toISOString(),
     });
 
     expect(await queueIds()).toEqual([walkIn, soon.body.id]);
   });
 
-  it("lets a due emergency appointment take the front", async () => {
+  it("lets a due appointment take the front", async () => {
     const walkIn = await join("Ada");
     const overdue = await book({
       name: "Grace",
-      priority: "emergency",
+      visitType: "remote",
       scheduledFor: new Date(Date.now() - 60_000).toISOString(),
     });
 
     expect(await queueIds()).toEqual([overdue.body.id, walkIn]);
   });
 
-  it("shows a visitor their appointment time but not their triage", async () => {
+  it("shows a visitor their appointment time but not their visit type", async () => {
     const at = new Date(Date.now() + 3_600_000).toISOString();
-    await book({ name: "Grace", scheduledFor: at, priority: "urgent" });
+    await book({ name: "Grace", scheduledFor: at, visitType: "remote" });
 
     const res = await request(server).get("/api/queue");
     expect(res.body[0].scheduledFor).toBe(at);
-    expect(res.body[0]).not.toHaveProperty("priority");
+    expect(res.body[0]).not.toHaveProperty("visitType");
   });
 
-  it("rejects an unknown triage level or unparseable time", async () => {
-    expect((await book({ name: "Ada", priority: "whenever" })).status).toBe(
+  it("rejects an unknown visit type or unparseable time", async () => {
+    expect((await book({ name: "Ada", visitType: "whenever" })).status).toBe(
       400,
     );
     expect(
@@ -705,7 +711,7 @@ describe("triage and appointments", () => {
     const patch = await asAdmin(
       request(server).patch(`/api/entries/${id}`),
     ).send({
-      priority: "whenever",
+      visitType: "whenever",
     });
     expect(patch.status).toBe(400);
   });
@@ -815,12 +821,18 @@ describe("triage and appointments", () => {
     expect(res.status).toBe(401);
   });
 
+  it("credits a booking to whoever will see them", async () => {
+    const res = await book({ name: "Ada", helpedBy: "Kim" });
+    expect(res.status).toBe(201);
+    expect((await store.list())[0].helpedBy).toBe("Kim");
+  });
+
   it("books a walk-up with no time as an ordinary queue entry", async () => {
     const res = await book({ name: "Ada", caseType: "Traffic" });
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
       scheduledFor: "",
-      priority: "routine",
+      visitType: "in-person",
       caseType: "Traffic",
     });
   });

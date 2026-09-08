@@ -18,7 +18,7 @@ export const makeEntry = (overrides: Partial<Entry> = {}): Entry => ({
   appointmentOutcome: "",
   legalOutcome: "",
   timeSpent: 0,
-  priority: "routine",
+  visitType: "in-person",
   scheduledFor: "",
   deletedAt: "",
   ...overrides,

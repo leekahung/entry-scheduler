@@ -1,10 +1,10 @@
-import { PRIORITIES, PRIORITY_LABEL, type Priority } from "../shared/types";
+import { VISIT_TYPES, VISIT_TYPE_LABEL, type VisitType } from "../shared/types";
 
 type Props = {
   query: string;
   onQuery: (value: string) => void;
-  triage: Priority | "";
-  onTriage: (value: Priority | "") => void;
+  visitType: VisitType | "";
+  onVisitType: (value: VisitType | "") => void;
   filtering: boolean;
   shown: number;
   total: number;
@@ -15,8 +15,8 @@ type Props = {
 export default function QueueFilters({
   query,
   onQuery,
-  triage,
-  onTriage,
+  visitType,
+  onVisitType,
   filtering,
   shown,
   total,
@@ -37,28 +37,28 @@ export default function QueueFilters({
         onChange={(event) => onQuery(event.target.value)}
         placeholder="Search name or #number"
       />
-      <label className="sr-only" htmlFor="triage-filter">
-        Triage level
+      <label className="sr-only" htmlFor="visit-type-filter">
+        Visit type
       </label>
       {/* A fixed width, not one that follows the selected option: the row is a
-        flex line, so a select that grew from "Urgent" to "Any triage level"
+        flex line, so a select that grew from "Remote" to "Any visit type"
         moved the search field and the checkbox beside it every time. */}
       <select
-        id="triage-filter"
+        id="visit-type-filter"
         className="w-[12rem] max-w-full flex-none"
-        value={triage}
-        onChange={(event) => onTriage(event.target.value as Priority | "")}
+        value={visitType}
+        onChange={(event) => onVisitType(event.target.value as VisitType | "")}
       >
-        <option value="">Any triage level</option>
-        {PRIORITIES.map((level) => (
-          <option key={level} value={level}>
-            {PRIORITY_LABEL[level]}
+        <option value="">Any visit type</option>
+        {VISIT_TYPES.map((type) => (
+          <option key={type} value={type}>
+            {VISIT_TYPE_LABEL[type]}
           </option>
         ))}
       </select>
       {/* Its own line, and always there: a row that came and went with the
         filters shortened the search field beside it and moved everything below
-        the card every time someone picked a triage level. The button keeps its
+        the card every time someone picked a visit type. The button keeps its
         space when there is nothing to clear — `invisible` leaves it out of the
         tab order and the accessibility tree, but not out of the layout. */}
       <p className="m-0 flex flex-[1_1_100%] flex-wrap items-center gap-3 text-meta text-muted">
@@ -67,7 +67,7 @@ export default function QueueFilters({
         </span>
         <button
           type="button"
-          className={`btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem] ${
+          className={`btn-secondary pointer-fine:min-h-9 px-3 py-1.5 ${
             filtering ? "" : "invisible"
           }`}
           onClick={onClear}

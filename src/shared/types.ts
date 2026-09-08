@@ -8,14 +8,13 @@ import type {
 export const STATUSES = ["new", "pending", "resolved"] as const;
 export type Status = (typeof STATUSES)[number];
 
-export const PRIORITIES = ["emergency", "urgent", "routine"] as const;
-export type Priority = (typeof PRIORITIES)[number];
+export const VISIT_TYPES = ["in-person", "remote"] as const;
+export type VisitType = (typeof VISIT_TYPES)[number];
 
-/** Short labels for the triage control; staff read these at a glance. */
-export const PRIORITY_LABEL: Record<Priority, string> = {
-  emergency: "Emergency",
-  urgent: "Urgent",
-  routine: "Routine",
+/** Short labels for the visit-type control; staff read these at a glance. */
+export const VISIT_TYPE_LABEL: Record<VisitType, string> = {
+  "in-person": "Walk-in/Appointment",
+  remote: "Email/Phone/Remote",
 };
 
 /**
@@ -70,7 +69,7 @@ export type AdminEntry = QueueEntry &
     updatedAt: string;
     helpedBy: string;
     adminNote: string;
-    priority: Priority;
+    visitType: VisitType;
     /** When staff took it off the board, or "" while it is still on it. */
     deletedAt: string;
   };
