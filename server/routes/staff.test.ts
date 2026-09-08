@@ -171,7 +171,7 @@ describe("managing who has access", () => {
     delete process.env.GOOGLE_SHEETS_ID;
   });
 
-  it("still lets staff work the queue and take their own CSV", async () => {
+  it("still lets staff work the queue and take their own current-list export", async () => {
     await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
     const id = await join("Ada");
 
@@ -182,7 +182,7 @@ describe("managing who has access", () => {
     expect(worked.status).toBe(200);
 
     const exported = await request(withStaffServer)
-      .get("/api/entries.csv")
+      .get("/api/entries/current.xlsx")
       .set("cookie", as("kim@clinic.org"));
     expect(exported.status).toBe(200);
   });
@@ -352,6 +352,33 @@ describe("managing who has access", () => {
       .send({ email: "boss@clinic.org", role: "staff" });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain("set on the server");
+  });
+
+  // Removing yourself was already refused; re-adding yourself as staff is the
+  // same mistake reached through the add form, and the last owner to make it
+  // leaves nobody able to undo it.
+  it("will not let an owner make themselves staff", async () => {
+    await staff.add("kim@clinic.org", "owner", "boss@clinic.org");
+    const res = await request(withStaffServer)
+      .post("/api/admin/staff")
+      .set("cookie", as("kim@clinic.org"))
+      .send({ email: "kim@clinic.org", role: "staff" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("your own access");
+
+    const still = await request(withStaffServer)
+      .get("/api/admin/staff")
+      .set("cookie", as("kim@clinic.org"));
+    expect(still.body.members[0].role).toBe("owner");
+  });
+
+  it("still lets an owner raise somebody else, and themselves, to owner", async () => {
+    await staff.add("kim@clinic.org", "owner", "boss@clinic.org");
+    const res = await request(withStaffServer)
+      .post("/api/admin/staff")
+      .set("cookie", as("kim@clinic.org"))
+      .send({ email: "kim@clinic.org", role: "owner" });
+    expect(res.status).toBe(201);
   });
 
   it("changes a role rather than duplicating the row", async () => {

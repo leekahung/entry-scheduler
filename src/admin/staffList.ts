@@ -1,9 +1,18 @@
 import type { StaffList, StaffRole } from "../shared/types";
 
-const ROLE_WORD: Record<StaffRole, string> = {
+/** How a role is named in a sentence. */
+export const ROLE_WORD: Record<StaffRole, string> = {
   owner: "an owner",
   staff: "staff",
 };
+
+/** The listed role for this address, or null when it is not on the list. */
+export function currentRole(
+  list: StaffList,
+  address: string,
+): StaffRole | null {
+  return list.members.find((member) => member.email === address)?.role ?? null;
+}
 
 /**
  * Why this address cannot be added to the staff list, or null if it can.

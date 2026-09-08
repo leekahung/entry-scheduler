@@ -3,8 +3,37 @@ import { isEmailish, normalizeEmail } from "../../server/shared/email";
 import type { StaffList, StaffRole } from "../shared/types";
 import { addStaff, fetchStaff, removeStaff } from "../shared/api";
 import ConfirmDialog from "./ConfirmDialog";
-import { duplicateReason } from "./staffList";
+import { currentRole, duplicateReason, ROLE_WORD } from "./staffList";
 import { useAsyncAction } from "../hooks/useAsyncAction";
+
+/** A change to somebody's access, waiting to be confirmed. */
+type Pending =
+  | { kind: "row"; email: string }
+  | { kind: "remove"; email: string }
+  | { kind: "role"; email: string; from: StaffRole; to: StaffRole };
+
+function title(pending: Pending): string {
+  if (pending.kind === "row") return "Clear this leftover row?";
+  if (pending.kind === "remove") return `Remove ${pending.email}?`;
+  return `Change what ${pending.email} may do?`;
+}
+
+const CONFIRM_LABEL: Record<Pending["kind"], string> = {
+  row: "Clear row",
+  remove: "Remove access",
+  role: "Change access",
+};
+
+/** What the change actually does, said plainly. */
+function body(pending: Pending): string {
+  if (pending.kind === "row") {
+    return `${pending.email} is an owner from the server settings and stays one. Only the leftover row in the sheet is cleared.`;
+  }
+  if (pending.kind === "remove") {
+    return `${pending.email} loses access to the console within about 30 seconds, including mid-shift. Adding them again is the only way back.`;
+  }
+  return `${pending.email} is already on the list as ${ROLE_WORD[pending.from]}. This changes them to ${ROLE_WORD[pending.to]}.`;
+}
 
 /**
  * Lets an owner grant and revoke console access.
@@ -21,13 +50,10 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
     setError,
     run: attempt,
   } = useAsyncAction("That did not work.");
-  // Taking someone's access away locks them out mid-shift and cannot be
-  // undone from here — they have to be added again — so it is asked about
-  // first, the same as removing someone from the queue.
-  const [confirming, setConfirming] = useState<{
-    email: string;
-    role: StaffRole | "row";
-  } | null>(null);
+  // Everything here changes what somebody else may do, and none of it can be
+  // undone from this panel by the person it happens to, so each is asked
+  // about first — the same as removing someone from the queue.
+  const [confirming, setConfirming] = useState<Pending | null>(null);
 
   const load = () =>
     fetchStaff(passcode)
@@ -46,6 +72,13 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
     attempt(async () => {
       await action();
       await load();
+    });
+
+  const grant = (address: string, next: StaffRole) =>
+    run(async () => {
+      await addStaff(passcode, address, next);
+      setEmail("");
+      setRole("staff");
     });
 
   if (!list) {
@@ -96,11 +129,27 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
             setError(duplicate);
             return;
           }
-          void run(async () => {
-            await addStaff(passcode, address, role);
-            setEmail("");
-            setRole("staff");
-          });
+          // Adding an address already on the list rewrites its row, so the
+          // same form that grants access is also how a role is taken away.
+          // It answers like any other add, which is no way to find out you
+          // have just demoted an owner — least of all yourself.
+          // The server refuses this too. Caught here so it reads as the
+          // form's answer rather than as a failed request.
+          if (address === list.you?.email && role === "staff") {
+            setError("You cannot change your own access to staff.");
+            return;
+          }
+          const listed = currentRole(list, address);
+          if (listed) {
+            setConfirming({
+              kind: "role",
+              email: address,
+              from: listed,
+              to: role,
+            });
+            return;
+          }
+          void grant(address, role);
         }}
       >
         <div className="flex field-wide flex-col gap-2">
@@ -158,7 +207,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
                 type="button"
                 className="btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
                 disabled={busy}
-                onClick={() => setConfirming({ email: owner, role: "row" })}
+                onClick={() => setConfirming({ kind: "row", email: owner })}
               >
                 Clear row
               </button>
@@ -177,7 +226,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
               className="btn-secondary pointer-fine:min-h-[2.25rem] px-[0.7rem] py-[0.35rem]"
               disabled={busy || member.email === list.you?.email}
               onClick={() =>
-                setConfirming({ email: member.email, role: member.role })
+                setConfirming({ kind: "remove", email: member.email })
               }
             >
               Remove
@@ -191,24 +240,17 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
 
       <ConfirmDialog
         open={confirming !== null}
-        title={
-          confirming?.role === "row"
-            ? "Clear this leftover row?"
-            : `Remove ${confirming?.email}?`
-        }
-        body={
-          confirming?.role === "row"
-            ? `${confirming.email} is an owner from the server settings and stays one. Only the leftover row in the sheet is cleared.`
-            : `${confirming?.email} loses access to the console within about 30 seconds, including mid-shift. Adding them again is the only way back.`
-        }
-        confirmLabel={
-          confirming?.role === "row" ? "Clear row" : "Remove access"
-        }
+        title={confirming ? title(confirming) : ""}
+        body={confirming ? body(confirming) : ""}
+        confirmLabel={confirming ? CONFIRM_LABEL[confirming.kind] : ""}
         onCancel={() => setConfirming(null)}
         onConfirm={() => {
-          const target = confirming?.email;
+          const pending = confirming;
           setConfirming(null);
-          if (target) void run(() => removeStaff(passcode, target));
+          if (!pending) return;
+          void (pending.kind === "role"
+            ? grant(pending.email, pending.to)
+            : run(() => removeStaff(passcode, pending.email)));
         }}
       />
     </section>

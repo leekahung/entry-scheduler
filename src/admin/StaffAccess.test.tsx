@@ -167,3 +167,96 @@ describe("removing someone", () => {
     await waitFor(() => expect(api.fetchStaff).toHaveBeenCalledTimes(2));
   });
 });
+
+// The add form is also how a role is taken away: adding an address already on
+// the list rewrites its row. Answering like an ordinary add is no way to find
+// out an owner has just been demoted.
+describe("changing the role of someone already listed", () => {
+  const withOwner: StaffList = {
+    ...LIST,
+    members: [
+      {
+        email: "kim@clinic.org",
+        role: "owner",
+        addedBy: "boss@clinic.org",
+        addedAt: "",
+      },
+    ],
+  };
+
+  it("asks before demoting, naming both roles", async () => {
+    await show(withOwner);
+    await typeAddress("kim@clinic.org");
+    await clickAdd();
+
+    expect(api.addStaff).not.toHaveBeenCalled();
+    const asked = screen.getByRole("dialog").textContent ?? "";
+    expect(asked).toContain("kim@clinic.org");
+    expect(asked).toContain("already on the list as an owner");
+    expect(asked).toContain("changes them to staff");
+  });
+
+  it("goes through with it once confirmed", async () => {
+    await show(withOwner);
+    await typeAddress("kim@clinic.org");
+    await clickAdd();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change access" }),
+    );
+    expect(api.addStaff).toHaveBeenCalledWith(
+      "pass",
+      "kim@clinic.org",
+      "staff",
+    );
+  });
+
+  it("changes nothing when the question is declined", async () => {
+    await show(withOwner);
+    await typeAddress("kim@clinic.org");
+    await clickAdd();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(api.addStaff).not.toHaveBeenCalled();
+  });
+
+  // Remove already refuses to let anyone take their own access away; the add
+  // form was the way round it.
+  it("refuses an owner making themselves staff", async () => {
+    await show({
+      ...LIST,
+      you: { email: "kim@clinic.org", role: "owner" },
+      bootstrapOwners: [],
+      members: [
+        {
+          email: "kim@clinic.org",
+          role: "owner",
+          addedBy: "boss@clinic.org",
+          addedAt: "",
+        },
+      ],
+    });
+    await typeAddress("kim@clinic.org");
+    await clickAdd();
+
+    await screen.findByText("You cannot change your own access to staff.");
+    // The form answers it outright, rather than asking a question first.
+    const dialog = screen.queryByRole("dialog", {
+      hidden: true,
+    }) as HTMLDialogElement | null;
+    expect(dialog?.open).toBeFalsy();
+    expect(api.addStaff).not.toHaveBeenCalled();
+  });
+
+  it("still adds someone new without asking", async () => {
+    await show();
+    await typeAddress("new@clinic.org");
+    await clickAdd();
+    await waitFor(() =>
+      expect(api.addStaff).toHaveBeenCalledWith(
+        "pass",
+        "new@clinic.org",
+        "staff",
+      ),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

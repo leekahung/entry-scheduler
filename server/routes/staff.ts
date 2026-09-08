@@ -70,6 +70,17 @@ export function staffRoutes({
       }
 
       const who = await identify(req);
+      // Re-adding an address rewrites its row, so this is the other way to
+      // reach the mistake the remove path already refuses: an owner who makes
+      // themselves staff loses the panel that would put it back, and where
+      // they are the only owner nobody else can either.
+      if (who && email === who.email && role === "staff") {
+        res.status(400).json({
+          error: "You cannot change your own access to staff.",
+        });
+        return;
+      }
+
       res.status(201).json(await staff?.add(email, role, who?.email ?? ""));
     }),
   );
