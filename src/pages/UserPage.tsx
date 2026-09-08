@@ -6,6 +6,7 @@ import QueueBoard from "../kiosk/QueueBoard";
 import WaitingList from "../kiosk/WaitingList";
 import { formatAppointment } from "../shared/time";
 import { usePoll } from "../hooks/usePoll";
+import ScrollToTop from "../shared/ScrollToTop";
 import { ToastList, useToasts } from "../shared/toasts";
 
 const POLL_MS = 5000;
@@ -227,7 +228,7 @@ export default function UserPage() {
           // with no name is announced as nothing at all — leaving the bare
           // number as the first thing a visitor hears.
           aria-label="Your ticket"
-          className="mt-2 flex flex-col gap-[0.35rem] rounded-xl border border-border border-l-[5px] border-l-accent bg-surface p-5"
+          className="mt-2 flex flex-col gap-1.5 rounded-xl border border-border border-l-[5px] border-l-accent bg-surface p-5"
         >
           {/* The board calls people by number, so the visitor needs to know
               which one is theirs. */}
@@ -250,7 +251,7 @@ export default function UserPage() {
               ? "You’re checked in. Someone will come help you."
               : "You’re checked in. You join the line at your appointment time."}
           </p>
-          <div className="mt-[0.35rem] flex flex-wrap items-center gap-3">
+          <div className="mt-1.5 flex flex-wrap items-center gap-3">
             {/* Only staff can take someone out of the line; this just clears
                 this device so the next person can join on it. Deliberately
                 unconfirmed: on a shared tablet the next visitor is standing
@@ -318,6 +319,7 @@ export default function UserPage() {
       </p>
 
       <ToastList toasts={toasts.toasts} onDismiss={toasts.dismiss} kiosk />
+      <ScrollToTop />
     </main>
   );
 }

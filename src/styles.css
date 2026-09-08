@@ -32,11 +32,6 @@
      badges side by side. */
   --color-resolved: #117733;
   --color-danger: #b91c1c;
-  --color-emergency: #b91c1c;
-  /* Tol muted purple. Was the same amber as --color-new, which sat 5.5 from
-     emergency red under deuteranopia — the two triage levels that most need
-     telling apart. */
-  --color-urgent: #aa4499;
 
   /* Banner tones: a tinted surface, its border, and ink that clears 4.5:1 on
      that tint. Not part of the colour-blind-safe sets above — nothing is told
@@ -67,6 +62,10 @@
      values within 0.05em of each other. */
   --tracking-label: 0.04em;
   --tracking-label-wide: 0.08em;
+
+  /* Lifts a floating element off the page. Shared by the toasts and the
+     back-to-top button, which sit in opposite corners of the same layer. */
+  --shadow-raised: 0 2px 10px rgb(0 0 0 / 0.12);
 
   /* The width a form with a textarea stops growing at, so the lines stay
      readable. Distinct from a page's own max width. */
@@ -175,6 +174,23 @@
   width: 100%;
 }
 
+/* The way back to the top, in the corner the toasts leave free — except on a
+   narrow screen, where a toast runs the full width and passes under this. It
+   sits a layer below them so the toast's own dismiss button stays reachable:
+   a message that has to be read and cleared outranks a shortcut that can wait
+   for it to go. Same insets, so neither sits under a notch or a home bar. */
+.scroll-top {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 19;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  box-shadow: var(--shadow-raised);
+}
+
 /* The kiosk keeps the top and the middle: its page is one narrow column read
    across a room, with no header furniture beside it to cover, and a check-in
    confirmation is the one message that most needs to be seen. */
@@ -198,7 +214,7 @@
   padding: 0.7rem 0.9rem;
   font-size: var(--text-meta);
   line-height: 1.4;
-  box-shadow: 0 2px 10px rgb(0 0 0 / 0.12);
+  box-shadow: var(--shadow-raised);
   pointer-events: auto;
 }
 
