@@ -95,17 +95,3 @@ export type StaffList = {
   redundantRows: string[];
   members: StaffMember[];
 };
-
-/**
- * What the processing log still needs before this client counts as recorded.
- * Legal outcome is deliberately not required: a consult that files nothing is
- * still a complete record.
- */
-export function missingForLog(entry: AdminEntry): string[] {
-  const missing: string[] = [];
-  if (!entry.caseType) missing.push("case type");
-  if (!entry.appointmentType) missing.push("appointment type");
-  if (!entry.appointmentOutcome) missing.push("appointment outcome");
-  if (!entry.timeSpent) missing.push("time spent");
-  return missing;
-}

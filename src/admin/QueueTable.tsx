@@ -1,7 +1,6 @@
 import { Fragment } from "react";
 import { CASE_TYPE_LABEL } from "../../server/shared/codes";
 import {
-  missingForLog,
   PRIORITIES,
   PRIORITY_LABEL,
   STATUS_LABEL,
@@ -144,7 +143,6 @@ export default function QueueTable({
           </tr>
         )}
         {rows.map((entry) => {
-          const missing = missingForLog(entry);
           // An appointment is not late until its time comes round, so a
           // booking taken last week is measured from the slot, not from when
           // someone typed it in. Walk-ins have no slot and start on arrival.
@@ -166,18 +164,6 @@ export default function QueueTable({
                   className={`${CELL} card-mode:pb-0 card-mode:text-[0.95rem] card-mode:font-bold card-mode:text-muted`}
                 >
                   #{entry.id}
-                  {/* The export exists to track who has been processed, so an
-                      unfinished row is worth flagging before it is exported. */}
-                  {missing.length > 0 && (
-                    <span
-                      className="ml-[0.35rem] inline-block size-2 rounded-full bg-new align-[0.1rem]"
-                      title={`Still needs ${missing.join(", ")}`}
-                    >
-                      <span className="sr-only">
-                        Still needs {missing.join(", ")}
-                      </span>
-                    </span>
-                  )}
                 </td>
                 <td
                   className={`${NAME_CELL} font-semibold card-mode:pt-0 card-mode:pb-2 card-mode:text-lead`}
