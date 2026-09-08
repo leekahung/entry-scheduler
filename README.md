@@ -11,18 +11,24 @@ Statuses are **new** → **pending** (someone is helping) → **resolved** (help
 
 ## The queue
 
-Walk-ins and appointments share one line. Position is decided by two things:
+Walk-ins and appointments share one line. Position is decided by **time due** —
+your appointment time if you have one, otherwise when you signed in. A 2pm
+booking falls in behind the morning walk-ins and ahead of anyone who arrives
+after 2pm.
 
-1. **Triage level** — emergency, then urgent, then routine. Staff set it; it is
-   never shown to visitors, only reflected in the order. Visitors cannot set
-   their own, or everyone would be an emergency.
-2. **Time due** — your appointment time if you have one, otherwise when you
-   signed in. A 2pm booking falls in behind the morning walk-ins and ahead of
-   anyone who arrives after 2pm.
+**Visit type** only separates two entries due at the very same moment, where
+email, phone and remote go first. It is never shown to visitors, and visitors
+cannot set their own. Ranking it above the time due instead would hold a
+walk-in behind every remote entry, including ones raised after they arrived.
 
-An appointment that is not due yet waits at the back **whatever its triage
-level**, so the board never announces someone who has not arrived as next up.
+An appointment that is not due yet waits at the back **whatever its visit
+type**, so the board never announces someone who has not arrived as next up.
 It takes its rightful place the moment its time comes.
+
+Both screens grow a **Top** button once the page has scrolled a little way,
+since the queue runs well past one screen on a busy day. It sits in the corner
+the toasts leave free, and a layer below them, so it can never cover a message
+waiting to be dismissed.
 
 The server sends a `due` flag with every entry rather than letting each screen
 work it out, so the board, the console, and the ordering can never disagree.
@@ -36,7 +42,11 @@ usable from a visitor's own phone.
 
 **Checking in.** One card: name (required), date of birth, phone, and gender —
 a four-option list (Male, Female, Non-binary, Other) plus "Prefer not to say".
-The screen never asks what the legal issue is; staff add that later.
+The screen never asks what the legal issue is; staff add that later. A US phone
+number picks up its dashes as it is typed — `5035550142` becomes
+`503-555-0142` — while anything that cannot be a US number, an extension or an
+overseas number, is kept exactly as it was written rather than rewritten into a
+different one.
 
 **The board.** Above the form, **Now being helped** lists the numbers currently
 with staff, and **Up next** shows the lowest waiting number. Numbers only — a
@@ -98,8 +108,8 @@ Five tabs, all sharing the single queue order (arrow keys move between them):
 | **Done**            | Everyone already helped                   |
 | **Removed**         | Taken off the board, newest first, and able to be put back |
 
-Each row carries the number, full name, case type, a triage dropdown, how long
-they have been waiting, who helped, and three actions:
+Each row carries the number, full name, case type, a visit-type dropdown, how
+long they have been waiting, who helped, and three actions:
 
 - **Status** — a select holding Waiting, Being helped and Done. A select
   rather than a button that walks the three in a circle: a row goes wherever
@@ -110,6 +120,13 @@ they have been waiting, who helped, and three actions:
   reversible: the row moves to the **Removed** tab, where **Put back** returns
   it and owners are offered the permanent erase.
 
+**On a narrower screen** — under about 1220px, where the seven columns stop
+fitting — the table becomes one card per entry. The card is a grid rather than
+a stack: it takes as many columns of fields as it has room for, three on a wide
+tablet and one on a phone, so a card is not mostly empty space beside a case
+code or a select. The number and name read as its heading, and the buttons and
+the open editor run the full width.
+
 **Who gets the credit** follows from where the row came from, not from where it
 lands. Moving one from *Being helped* back to *Waiting* drops the name in
 "Helped by", because nobody helped them — it was started by mistake. Moving one
@@ -118,15 +135,35 @@ the log's record of who. Neither sends the name of whoever made the change, so
 putting a row back in the queue cannot quietly re-credit it to them.
 
 **The row editor** is where the rest of the sign-in log gets filled in: date of
-birth, phone, gender, case type, who helped, appointment time, triage level,
+birth, phone, gender, case type, who helped, appointment time, visit type,
 appointment type, appointment outcome, legal outcome, time spent in quarter
 hours, and a staff-only admin note. Its draft is seeded once when it opens, so
 the 5-second poll cannot overwrite half-typed changes. Closing it — or the
 booking form — with edits still in it asks first, since the draft is the only
 copy of what was typed.
 
+**Date of birth and phone number are required**, and the phone must be a whole
+ten-digit US number. The editor is a real form, so the browser reports what is
+missing in its own words rather than the Save button being greyed out; Save is
+still held back while nothing has been touched, since the server refuses an
+empty update. Every other field can be left blank and filled in later.
+
+Fields are **tinted while they are still empty** — red for the two that have to
+be filled in, amber for the rest — and the tint clears as soon as each one
+has a value. Never colour alone: the two required fields are also marked
+`required`, and a line under the heading says which they are. Time spent reads
+"Still to record" until somebody enters hours, which is the nudge to fill it
+in once a visit is done.
+
+One consequence worth knowing: a row created before these rules — a visitor who
+skipped their date of birth, or a number that is not a ten-digit US one —
+cannot be saved until both are supplied. Staff opening such a row to record an
+outcome will be asked for them first.
+
 **Header actions** — **Book someone in** (a form for a walk-up who cannot work
-the screen, or for an appointment: leave the time blank for a walk-up),
+the screen, or for an appointment: leave the time blank for a walk-up; it also
+takes **Helped by**, since whoever books someone in usually knows who will see
+them, and that is a different person from whoever is working the console),
 **Open spreadsheet** (owners only, and only where Sheets is configured),
 **Download current list**, **Download all months**, **Staff access** (owners only — a button that opens
 and closes the access list), and **Sign out**, which asks first: on a shared
@@ -434,7 +471,7 @@ One tab holds the queue. The human columns of the sign-in log come first —
 with the log's single **Notes** column split into **Notes** (the visitor's) and
 **Staff Notes**, since the console has to tell them apart — then the
 bookkeeping the log has no room for: **ID**, **Status**, **Signed In**, **Last
-Changed**, **Helped By**, **Priority**, **Appointment Time**. A row is a whole
+Changed**, **Helped By**, **Visit Type**, **Appointment Time**. A row is a whole
 entry.
 
 **Signed In**, **Last Changed** and **Appointment Time** are written as a plain
@@ -453,15 +490,22 @@ in the app's own column order, so anything else you type there is overwritten
 by the next check-in or save. Specifically:
 
 - **Kept:** edits to a value column the app reads — a name, a phone number, a
-  case type, **Status**, **Priority**, **Appointment Time**, either notes
+  case type, **Status**, **Visit Type**, **Appointment Time**, either notes
   column, and so on.
 - **Overwritten:** a column you add yourself, anywhere in the tab.
 - **Overwritten:** the **Date** column, which is derived from **Signed In** and
   so is never read back.
 
 Rows without a numeric **ID** are ignored, so a note typed into a spare row is
-harmless. A hand-edited **Status** or **Priority** that is not a recognised value
-falls back to `new` / `routine` rather than breaking the board.
+harmless. A hand-edited **Status** or **Visit Type** that is not a recognised
+value falls back to `new` / `in-person` rather than breaking the board.
+
+**Upgrading a sheet written before visit types.** **Visit Type** replaced a
+**Priority** column holding `emergency` / `urgent` / `routine`. Those values do
+not map onto a visit type, so they are not read: every existing row comes back
+as `in-person`, and the first write after deploying renames the column and
+replaces its contents. Take a copy of the tab first if that history is worth
+keeping.
 
 Two consequences worth knowing:
 
@@ -607,7 +651,7 @@ cannot change a status or pull the export by calling the API directly.
 | Give DOB, phone, gender                   | ✅      | ✅    | ✅    |
 | Set the case type                         | ❌      | ✅    | ✅    |
 | Book someone in / set an appointment      | ❌      | ✅    | ✅    |
-| Set a triage level                        | ❌      | ✅    | ✅    |
+| Set a visit type                          | ❌      | ✅    | ✅    |
 | Record appointment / legal outcome        | ❌      | ✅    | ✅    |
 | See who is waiting (short names + status) | ✅      | ✅    | ✅    |
 | See full names                            | ❌      | ✅    | ✅    |
