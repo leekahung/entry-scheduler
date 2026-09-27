@@ -32,6 +32,9 @@ export function createApp(
 ) {
   const app = express();
   app.disable("x-powered-by");
+  // Only the OAuth callback reads the query, and only flat strings; `qs`'s
+  // nested parsing is surface on every public route and nothing uses it.
+  app.set("query parser", "simple");
   // Before everything it might compress. The board is polled every five
   // seconds by every screen in the room, and its JSON is repetitive enough to
   // go out at a sixteenth of the size; the bundle a kiosk loads is a third.
@@ -76,6 +79,21 @@ export function createApp(
     },
   });
 
+  // One budget shared by every address, so a flood from many cannot starve the
+  // write queue staff edits wait in. Each check-in costs a Sheets read and a
+  // write against a ~60/min quota. Only a 400 is refunded: it never reached
+  // Sheets, while a 500 has usually spent several retries getting there.
+  const joinCapLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    keyGenerator: () => "all",
+    skipFailedRequests: true,
+    requestWasSuccessful: (_req, res) => res.statusCode !== 400,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Sign-in is busy right now. Try again in a minute." },
+  });
+
   // The board is the cheapest thing to hammer and the easiest to scrape, but a
   // waiting visitor polls it 12 times a minute and a roomful shares one address
   // behind NAT. 1200 leaves room for ~100 of them and still stops a script.
@@ -100,6 +118,7 @@ export function createApp(
     staff,
     adminLimiter,
     joinLimiter,
+    joinCapLimiter,
     queueLimiter,
     requireAdmin: guards.requireAdmin,
     requireOwner: guards.requireOwner,

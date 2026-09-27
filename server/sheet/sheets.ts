@@ -94,6 +94,8 @@ const TRANSIENT = new Set([429, 500, 502, 503, 504]);
 /** Retries after the first try, and the delay the first of them waits. */
 export const RETRIES = 3;
 const BACKOFF_MS = 250;
+/** A call Google has not answered by now is abandoned and retried. */
+export const SHEETS_TIMEOUT_MS = 10_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -109,6 +111,10 @@ async function call(
   for (let attempt = 0; ; attempt++) {
     const retriable = attempt < RETRIES;
     let res: Response;
+    // Writes run one at a time, so a hung call would stall every one queued.
+    // Cleared once headers arrive: the body is read outside this retry loop.
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), SHEETS_TIMEOUT_MS);
     try {
       res = await fetch(`${API}/${path}`, {
         method: init.method,
@@ -117,12 +123,16 @@ async function call(
           "content-type": "application/json",
         },
         body: init.body ? JSON.stringify(init.body) : undefined,
+        signal: abort.signal,
       });
     } catch (error) {
-      // Never reached Google at all — as transient as a 503, and as safe.
+      // Dropped or timed out. Safe to repeat, though a timed-out write may
+      // still land at Google later, after the retry.
       if (!retriable) throw error;
       await backOff(attempt);
       continue;
+    } finally {
+      clearTimeout(timer);
     }
     if (res.ok) return res;
     if (retriable && TRANSIENT.has(res.status)) {

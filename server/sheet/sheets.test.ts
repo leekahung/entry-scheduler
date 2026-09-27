@@ -3,6 +3,7 @@ import {
   googleTabs,
   googleTransport,
   RETRIES,
+  SHEETS_TIMEOUT_MS,
   sheetsConfig,
 } from "./sheets.js";
 
@@ -198,6 +199,42 @@ describe("googleTransport", () => {
       expect(calls()).toBe(3);
     });
 
+    it("abandons a call Google never answers and tries it again", async () => {
+      vi.useFakeTimers();
+      let calls = 0;
+      vi.stubGlobal("fetch", (_url: string, init: RequestInit) => {
+        calls += 1;
+        if (calls > 1) return Promise.resolve(ok({ values: [["ID"], [1]] }));
+        return new Promise((_resolve, reject) => {
+          if (init.signal?.aborted) reject(init.signal.reason);
+          init.signal?.addEventListener("abort", () =>
+            reject(init.signal?.reason),
+          );
+        });
+      });
+
+      const read = googleTransport(config, token).read();
+      await vi.advanceTimersByTimeAsync(SHEETS_TIMEOUT_MS);
+      await vi.runAllTimersAsync();
+
+      await expect(read).resolves.toEqual([["ID"], [1]]);
+      expect(calls).toBe(2);
+    });
+
+    it("stops the clock once Google answers, so a slow body is not cut off", async () => {
+      vi.useFakeTimers();
+      let signal: AbortSignal | undefined;
+      vi.stubGlobal("fetch", (_url: string, init: RequestInit) => {
+        signal = init.signal ?? undefined;
+        return Promise.resolve(ok({ values: [["ID"], [1]] }));
+      });
+
+      await googleTransport(config, token).read();
+      await vi.advanceTimersByTimeAsync(SHEETS_TIMEOUT_MS * 2);
+
+      expect(signal?.aborted).toBe(false);
+    });
+
     it("retries a write too, which is safe because it rewrites the whole tab", async () => {
       vi.useFakeTimers();
       const calls = flaky(503, 1);
@@ -219,7 +256,10 @@ describe("googleTransport", () => {
       await vi.runAllTimersAsync();
       await read;
 
-      for (const [, ms] of slept.mock.calls) waits.push(Number(ms));
+      // Each attempt also starts its timeout; only the backoffs are waits.
+      for (const [, ms] of slept.mock.calls) {
+        if (ms !== SHEETS_TIMEOUT_MS) waits.push(Number(ms));
+      }
       expect(waits).toHaveLength(RETRIES);
       expect(waits[1]).toBeGreaterThan(waits[0]);
       expect(waits[2]).toBeGreaterThan(waits[1]);

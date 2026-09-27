@@ -9,6 +9,7 @@ import type { RouteContext } from "./context.js";
 export function queueRoutes({
   store,
   joinLimiter,
+  joinCapLimiter,
   queueLimiter,
 }: RouteContext): Router {
   const routes = Router();
@@ -16,6 +17,7 @@ export function queueRoutes({
   routes.post(
     "/entries",
     joinLimiter,
+    joinCapLimiter,
     wrap(async (req, res) => {
       const checked = checkNewEntry(req.body);
       if (!checked.ok) {

@@ -254,6 +254,74 @@ describe("hardening", () => {
     ).toBeLessThanOrEqual(100);
   });
 
+  it("reads query strings flat, without qs's nested parsing", async () => {
+    app.get("/probe", (req, res) => {
+      res.json(req.query);
+    });
+    const res = await request(server).get("/probe?a[b]=1");
+    expect(res.body).toEqual({ "a[b]": "1" });
+  });
+
+  it("caps sign-ins across every address, not just per address", async () => {
+    app.set("trust proxy", 1);
+    const statuses: number[] = [];
+    for (let i = 0; i < 35; i++) {
+      statuses.push(
+        (
+          await request(server)
+            .post("/api/entries")
+            .set("x-forwarded-for", `203.0.113.${i}`)
+            .send({ name: `Flood ${i}` })
+        ).status,
+      );
+    }
+    expect(statuses.filter((status) => status === 201)).toHaveLength(30);
+    expect(statuses).toContain(429);
+  });
+
+  it("still counts sign-ins that failed at Google against the shared cap", async () => {
+    const failing: Store = {
+      ...emptyStore(),
+      add: () => Promise.reject(new Error("Google Sheets error 429")),
+    };
+    app = createApp(failing, PASSCODE);
+    app.set("trust proxy", 1);
+    const statuses: number[] = [];
+    for (let i = 0; i < 35; i++) {
+      statuses.push(
+        (
+          await request(server)
+            .post("/api/entries")
+            .set("x-forwarded-for", `203.0.113.${i}`)
+            .send({ name: `Flood ${i}` })
+        ).status,
+      );
+    }
+    expect(statuses.filter((status) => status === 500)).toHaveLength(30);
+    expect(statuses).toContain(429);
+  });
+
+  it("throttles junk from one address that the shared cap lets through", async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i < 105; i++) {
+      statuses.push(
+        (await request(server).post("/api/entries").send({ name: "" })).status,
+      );
+    }
+    // Only the per-address limit counts 400s, so this 429 can only be its.
+    expect(statuses).toContain(429);
+  });
+
+  it("does not spend the shared cap on sign-ins that were rejected", async () => {
+    for (let i = 0; i < 40; i++) {
+      await request(server).post("/api/entries").send({ name: "" });
+    }
+    const res = await request(server)
+      .post("/api/entries")
+      .send({ name: "Real visitor" });
+    expect(res.status).toBe(201);
+  });
+
   it("answers malformed JSON with an error that carries no stack trace", async () => {
     const res = await request(server)
       .post("/api/entries")

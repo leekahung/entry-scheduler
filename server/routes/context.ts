@@ -18,6 +18,7 @@ export type RouteContext = {
   staff?: StaffStore;
   adminLimiter: RequestHandler;
   joinLimiter: RequestHandler;
+  joinCapLimiter: RequestHandler;
   queueLimiter: RequestHandler;
   /** On-site, and holding either a session or the passcode. */
   requireAdmin: RequestHandler;
