@@ -109,6 +109,14 @@ describe("staff sign-in with Google", () => {
     expect(res.body.email).toBe("kim@clinic.org");
   });
 
+  it("401s a session cookie that cannot be decoded, rather than a 500", async () => {
+    enable();
+    const res = await request(server)
+      .get("/api/auth/me")
+      .set("cookie", `${SESSION_COOKIE}=%E0%A4%A`);
+    expect(res.status).toBe(401);
+  });
+
   it("sends staff to Google with a state cookie to come back with", async () => {
     enable();
     const res = await request(server).get("/api/auth/google");
@@ -128,15 +136,14 @@ describe("staff sign-in with Google", () => {
       .set("cookie", `${STATE_COOKIE}=genuine`);
     // Redirected back to the console with something readable, not raw JSON.
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain("authError=");
-    expect(res.headers.location).toContain("#/admin");
+    expect(res.headers.location).toBe("/?authError=unverified#/admin");
   });
 
   it("refuses a callback carrying no code at all", async () => {
     enable();
     const res = await request(server).get("/api/auth/callback?state=x");
     expect(res.status).toBe(302);
-    expect(res.headers.location).toContain("authError=");
+    expect(res.headers.location).toBe("/?authError=unverified#/admin");
   });
 
   it("clears the session cookie on sign-out", async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { authErrorMessage } from "../../server/shared/authErrors";
 import {
   fetchAuthMode,
   fetchSignedInEmail,
@@ -17,12 +18,12 @@ export type SignInMode = "google" | "passcode" | null;
 /** The message Google sign-in bounced back with, and a cleaned-up URL. */
 function takeAuthError(): string {
   const params = new URLSearchParams(window.location.search);
-  const message = params.get("authError");
-  if (!message) return "";
+  const code = params.get("authError");
+  if (!code) return "";
   // Drop it from the address bar so a reload does not resurrect the error.
   const { pathname, hash } = window.location;
   window.history.replaceState(null, "", `${pathname}${hash}`);
-  return message;
+  return authErrorMessage(code, params.get("email") ?? "");
 }
 
 /**

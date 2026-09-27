@@ -96,6 +96,12 @@ describe("cookies", () => {
     expect(readCookie(undefined, "admin_session")).toBeUndefined();
   });
 
+  it("treats a cookie that cannot be decoded as absent rather than throwing", () => {
+    expect(
+      readCookie("admin_session=%E0%A4%A", "admin_session"),
+    ).toBeUndefined();
+  });
+
   it("marks the session cookie HttpOnly and SameSite, and Secure over https", () => {
     const set = cookie("admin_session", "value", {
       maxAge: 60_000,

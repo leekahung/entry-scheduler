@@ -12,6 +12,7 @@ import {
   STATE_COOKIE,
 } from "../lib/auth.js";
 import { wrap, type Req } from "../lib/http.js";
+import type { AuthErrorCode } from "../shared/authErrors.js";
 import { sheetUrl, sheetsConfig } from "../sheet/sheets.js";
 import type { RouteContext } from "./context.js";
 
@@ -119,14 +120,16 @@ export function authRoutes({
 
       // This is a browser navigation, so failures go back to the console with
       // something readable rather than leaving staff on a JSON error page.
-      const fail = (reason: string) =>
-        res.redirect(`/?authError=${encodeURIComponent(reason)}#/admin`);
+      const fail = (code: AuthErrorCode, email = "") =>
+        res.redirect(
+          `/?authError=${code}${email ? `&email=${encodeURIComponent(email)}` : ""}#/admin`,
+        );
 
       const expected = readCookie(req.header("cookie"), STATE_COOKIE);
       const code = typeof req.query.code === "string" ? req.query.code : "";
       if (!code || !expected || req.query.state !== expected) {
         noteFailure();
-        fail("Sign-in could not be verified. Please try again.");
+        fail("unverified");
         return;
       }
 
@@ -166,11 +169,8 @@ export function authRoutes({
         res.setHeader("set-cookie", clearState);
         // Named plainly: an allowlist miss is an administrative problem, and
         // leaving staff guessing at a generic failure wastes everyone's time.
-        fail(
-          email
-            ? `${email} is not on the staff list for this console.`
-            : "Google did not confirm that address.",
-        );
+        if (email) fail("notListed", email);
+        else fail("unconfirmed");
         return;
       }
 
