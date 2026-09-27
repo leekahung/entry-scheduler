@@ -78,6 +78,14 @@ message says so at the top of the screen — see [Saying what
 happened](#saying-what-happened). Nobody has to type their name a second time
 because the network dropped.
 
+**If checking in is busy** the visitor is asked to try again in a minute.
+Check-ins are capped at 30 a minute across everyone, whatever address they come
+from: each one costs a read and a write against the spreadsheet's per-minute
+quota, and a flood of them would otherwise leave staff unable to save an edit.
+A check-in turned away for a missing name does not count, since it never
+reaches the spreadsheet; one that failed there does. Each address is also held
+to 100 a minute, sized for a waiting room sharing one connection.
+
 **Currently waiting** lists everyone in line as a number, a shortened name
 ("Ada L."), and a status. The shortening happens on the server, so the only
 full name this screen ever holds is the reader's own.
@@ -461,6 +469,12 @@ Sign-in asks for `openid`, `email` and `profile`. The last of those is what
 carries the display name the console credits work to; without it Google sends
 only an address, and the sign-in log reads as a column of email addresses.
 
+A sign-in that fails comes back to the console with a reason — could not be
+verified, not confirmed by Google, or not on the staff list, naming the address
+tried. The reason travels in the URL as a short code the console looks up,
+never as the message itself, so a crafted link cannot put its own words on the
+sign-in screen; an unknown code reads as a plain "Sign-in failed".
+
 Sessions last 12 hours and live in an HttpOnly, SameSite=Lax cookie; nothing is
 stored on the device. The name travels in that cookie, so anyone already signed
 in shows as their email address until their next sign-in.
@@ -524,7 +538,10 @@ Two consequences worth knowing:
 - A request Google refuses because it is busy — a rate limit, or a backend
   error — is retried a few times, waiting longer each time. Only the failures
   that will not clear on their own, such as a spreadsheet that was never
-  shared, are reported straight away.
+  shared, are reported straight away. A request Google has not started
+  answering within ten seconds is abandoned and retried the same way, since
+  writes go out one at a time and a hung one would hold up every edit behind
+  it. A write abandoned like that can still land late, after its retry.
 
 Setting it up:
 
