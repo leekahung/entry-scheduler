@@ -1,10 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { GoogleAuth } from "google-auth-library";
+import { afterEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import {
   googleTabs,
   googleTransport,
   RETRIES,
   SHEETS_TIMEOUT_MS,
+  serviceAccountEmail,
   sheetsConfig,
+  staffSheetsConfig,
+  TAB_LOOKUP_WAIT_MS,
+  tabUrl,
 } from "./sheets.js";
 
 const COMPLETE = {
@@ -13,6 +18,23 @@ const COMPLETE = {
   GOOGLE_SA_KEY:
     "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----",
 };
+
+describe("staffSheetsConfig", () => {
+  const queue = { spreadsheetId: "queue-1", tab: "Sheet1", credentials: null };
+
+  it("has no staff list at all rather than one inside the queue's spreadsheet", () => {
+    expect(staffSheetsConfig(queue, {})).toBeNull();
+    expect(
+      staffSheetsConfig(queue, { GOOGLE_STAFF_SHEETS_ID: "  " }),
+    ).toBeNull();
+  });
+
+  it("reads the Staff tab of its own spreadsheet", () => {
+    expect(
+      staffSheetsConfig(queue, { GOOGLE_STAFF_SHEETS_ID: "staff-1" }),
+    ).toEqual({ spreadsheetId: "staff-1", tab: "Staff", credentials: null });
+  });
+});
 
 describe("sheetsConfig", () => {
   it("is null without a spreadsheet, so the feature stays off", () => {
@@ -483,5 +505,152 @@ describe("googleTabs", () => {
     await googleTabs(config, token).read(months);
     // 60 tabs at 24 a batch: three requests rather than sixty.
     expect(calls).toHaveLength(3);
+  });
+});
+
+describe("tabUrl", () => {
+  const token = async () => "test-token";
+  const tabs = {
+    sheets: [
+      { properties: { sheetId: 0, title: "Sheet1" } },
+      { properties: { sheetId: 812345, title: "Staff" } },
+    ],
+  };
+  const answer = (body: unknown) => {
+    let calls = 0;
+    vi.stubGlobal("fetch", () => {
+      calls += 1;
+      return Promise.resolve(new Response(JSON.stringify(body)));
+    });
+    return () => calls;
+  };
+  // Distinct ids per test: looked-up tabs are remembered for the process.
+  const at = (spreadsheetId: string, tab: string) => ({
+    spreadsheetId,
+    tab,
+    credentials: null,
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("opens the named tab, not whichever was last looked at", async () => {
+    answer(tabs);
+    expect(await tabUrl(at("a-1", "Staff"), token)).toBe(
+      "https://docs.google.com/spreadsheets/d/a-1/edit#gid=812345",
+    );
+  });
+
+  it("links a first tab too, whose id is 0", async () => {
+    answer(tabs);
+    expect(await tabUrl(at("a-2", "Sheet1"), token)).toBe(
+      "https://docs.google.com/spreadsheets/d/a-2/edit#gid=0",
+    );
+  });
+
+  it("asks Google once per tab", async () => {
+    const calls = answer(tabs);
+    await tabUrl(at("a-3", "Staff"), token);
+    await tabUrl(at("a-3", "Staff"), token);
+    expect(calls()).toBe(1);
+  });
+
+  it("falls back to the file when the tab is not there", async () => {
+    answer(tabs);
+    expect(await tabUrl(at("a-4", "Gone"), token)).toBe(
+      "https://docs.google.com/spreadsheets/d/a-4/edit",
+    );
+  });
+
+  it("does not hold a link up while Google is slow, and uses the id once it comes", async () => {
+    vi.useFakeTimers();
+    let answer: (response: Response) => void = () => {};
+    let calls = 0;
+    vi.stubGlobal("fetch", () => {
+      calls += 1;
+      return new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    });
+
+    const first = tabUrl(at("a-6", "Staff"), token);
+    await vi.advanceTimersByTimeAsync(TAB_LOOKUP_WAIT_MS);
+    expect(await first).toBe("https://docs.google.com/spreadsheets/d/a-6/edit");
+
+    answer(new Response(JSON.stringify(tabs)));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await tabUrl(at("a-6", "Staff"), token)).toBe(
+      "https://docs.google.com/spreadsheets/d/a-6/edit#gid=812345",
+    );
+    expect(calls).toBe(1);
+  });
+
+  it("asks again after a lookup that found nothing", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(new Response("denied", { status: 403 })),
+    );
+    await tabUrl(at("a-7", "Staff"), token);
+    const calls = answer(tabs);
+    expect(await tabUrl(at("a-7", "Staff"), token)).toContain("#gid=812345");
+    expect(calls()).toBe(1);
+  });
+
+  it("falls back to the file rather than failing when Google cannot be asked", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(new Response("denied", { status: 403 })),
+    );
+    expect(await tabUrl(at("a-5", "Staff"), token)).toBe(
+      "https://docs.google.com/spreadsheets/d/a-5/edit",
+    );
+  });
+});
+
+describe("serviceAccountEmail", () => {
+  const host = { spreadsheetId: "x", tab: "Sheet1", credentials: null };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("reads a key's own address without asking anyone", async () => {
+    const asked = vi.spyOn(GoogleAuth.prototype, "getCredentials");
+    const keyed = {
+      ...host,
+      credentials: {
+        clientEmail: "key@p.iam.gserviceaccount.com",
+        privateKey: "k",
+      },
+    };
+    expect(await serviceAccountEmail(keyed)).toBe(
+      "key@p.iam.gserviceaccount.com",
+    );
+    expect(asked).not.toHaveBeenCalled();
+  });
+
+  it("asks the host again only when it could not say", async () => {
+    // Typed as the promise form: spyOn otherwise picks the callback overload.
+    const asked = (
+      vi.spyOn(
+        GoogleAuth.prototype,
+        "getCredentials",
+      ) as unknown as MockInstance<() => Promise<{ client_email?: string }>>
+    )
+      .mockRejectedValueOnce(new Error("no metadata server"))
+      .mockResolvedValue({ client_email: "run@p.iam.gserviceaccount.com" });
+
+    expect(await serviceAccountEmail(host)).toBeNull();
+    expect(await serviceAccountEmail(host)).toBe(
+      "run@p.iam.gserviceaccount.com",
+    );
+    expect(await serviceAccountEmail(host)).toBe(
+      "run@p.iam.gserviceaccount.com",
+    );
+    expect(asked).toHaveBeenCalledTimes(2);
   });
 });

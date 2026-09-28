@@ -66,6 +66,14 @@ export default function AdminBanners({
         </p>
       )}
 
+      {alerts?.missingStaffSheet && (
+        <p className={ALERT} role="status">
+          <strong>No staff spreadsheet is set up.</strong> Only the owners set
+          on the server can sign in, and nobody else can be given access. Open
+          Staff access for how to add one.
+        </p>
+      )}
+
       {alerts && alerts.failedAttempts >= ALERT_FROM && (
         <p className={ALERT} role="status">
           <strong>{alerts.failedAttempts} failed sign-in attempts</strong> in

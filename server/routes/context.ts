@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import type { Req } from "../lib/http.js";
 import type { Role, StaffStore } from "../domain/staff.js";
+import type { SheetsConfig } from "../sheet/sheets.js";
 import type { Store } from "../sheet/store.js";
 
 /** Who a request is, once the session and the staff list agree on it. */
@@ -14,8 +15,10 @@ export type Who = { email: string; role: Role };
  */
 export type RouteContext = {
   store: Store;
-  /** Absent on a deployment with no staff tab, which is why every use is optional. */
+  /** Absent where no staff spreadsheet is set up, which is why every use is optional. */
   staff?: StaffStore;
+  /** A spreadsheet's address, opened on the tab `config.tab` names. */
+  linkToTab: (config: SheetsConfig) => Promise<string>;
   adminLimiter: RequestHandler;
   joinLimiter: RequestHandler;
   joinCapLimiter: RequestHandler;

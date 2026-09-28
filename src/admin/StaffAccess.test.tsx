@@ -17,6 +17,8 @@ const api = await import("../shared/api");
 
 const LIST: StaffList = {
   you: { email: "boss@clinic.org", role: "owner" },
+  sheetUrl: null,
+  missingSheet: null,
   bootstrapOwners: ["boss@clinic.org"],
   redundantRows: [],
   members: [
@@ -47,6 +49,41 @@ describe("showing who has access", () => {
     await show();
     expect(screen.getByText("boss@clinic.org")).toBeDefined();
     expect(screen.getByText(/owner · set on the server/i)).toBeDefined();
+  });
+
+  it("opens the staff spreadsheet in a new tab where the server gives one", async () => {
+    await show({
+      ...LIST,
+      sheetUrl: "https://docs.google.com/spreadsheets/d/staff-456/edit",
+    });
+    const link = screen.getByRole("link", { name: /open staff spreadsheet/i });
+    expect(link.getAttribute("href")).toContain("staff-456");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
+  it("offers no spreadsheet where the server gives none", async () => {
+    await show();
+    expect(
+      screen.queryByRole("link", { name: /open staff spreadsheet/i }),
+    ).toBeNull();
+  });
+
+  it("explains how to set up a staff spreadsheet where there is none", async () => {
+    vi.mocked(api.fetchStaff).mockResolvedValue({
+      ...LIST,
+      members: [],
+      missingSheet: { shareWith: ["queue@project.iam.gserviceaccount.com"] },
+    });
+    render(<StaffAccess passcode="pass" />);
+    expect(
+      await screen.findByText(/no staff spreadsheet is set up/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText("queue@project.iam.gserviceaccount.com"),
+    ).toBeDefined();
+    expect(screen.getByText("GOOGLE_STAFF_SHEETS_ID")).toBeDefined();
+    // Nothing to add anyone to, so no form offering to.
+    expect(screen.queryByLabelText(/add a google address/i)).toBeNull();
   });
 
   it("says so when the list cannot be loaded", async () => {

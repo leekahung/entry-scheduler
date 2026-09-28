@@ -88,6 +88,10 @@ export type StaffMember = {
 
 export type StaffList = {
   you: { email: string; role: StaffRole } | null;
+  /** The spreadsheet the list is kept in, or null where Sheets is not set up. */
+  sheetUrl: string | null;
+  /** Set where there is no staff spreadsheet: who a new one must be shared with. */
+  missingSheet: { shareWith: string[] } | null;
   /** Owners set in the server's environment; not removable from the console. */
   bootstrapOwners: string[];
   /** Those of them that also carry a staff-tab row, which grants nothing. */

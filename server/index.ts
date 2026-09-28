@@ -3,7 +3,13 @@ import path from "node:path";
 import { createApp } from "./app.js";
 import { authConfig } from "./lib/auth.js";
 import { applyClinicZone } from "./lib/zone.js";
-import { googleTabs, googleTransport, sheetsConfig } from "./sheet/sheets.js";
+import {
+  googleTabs,
+  googleTransport,
+  sheetsConfig,
+  staffSheetsConfig,
+  tabUrl,
+} from "./sheet/sheets.js";
 import { createStore } from "./sheet/store.js";
 import { createStaffStore } from "./domain/staff.js";
 
@@ -111,37 +117,35 @@ const store = createStore(googleTransport(sheets), {
   tabs: googleTabs(sheets),
 });
 
-// Who may use the console. Its own tab, and — where GOOGLE_STAFF_SHEETS_ID
-// names one — its own spreadsheet: a tab cannot be kept from someone who can
-// open the file, so a separate file shared only with owners is the only way
-// the access list is not readable by everyone who can read the queue. The app
-// creates the tab on first write, so a fresh deployment needs no setup.
-const staffTab = process.env.GOOGLE_STAFF_TAB?.trim() || "Staff";
-const staffSheetId =
-  process.env.GOOGLE_STAFF_SHEETS_ID?.trim() || sheets.spreadsheetId;
-const staff = createStaffStore(
-  googleTransport(
-    { ...sheets, spreadsheetId: staffSheetId, tab: staffTab },
-    undefined,
-    { createMissing: true },
-  ),
-);
+// Who may use the console, kept in a spreadsheet of its own: anyone who can
+// edit a file can edit every tab in it, so a list inside the queue's would let
+// its editors make themselves owners. The app creates the tab on first write.
+const staffSheets = staffSheetsConfig(sheets);
+const staff = staffSheets
+  ? createStaffStore(
+      googleTransport(staffSheets, undefined, { createMissing: true }),
+    )
+  : undefined;
 
-// The console is closed to anything off the local network unless something
-// else is authenticating in front of it.
 if (auth) {
   console.log(
-    `Staff sign in with Google; ${auth.allowed.size} owner(s) set on the server, plus the "${staffTab}" tab`,
+    staffSheets
+      ? `Staff sign in with Google; ${auth.allowed.size} owner(s) set on the server, plus the "${staffSheets.tab}" tab`
+      : `Staff sign in with Google; ${auth.allowed.size} owner(s) set on the server`,
   );
-  if (staffSheetId === sheets.spreadsheetId) {
+  // Runs regardless: the owners can still sign in, and the console tells them
+  // what is missing. A deployment with neither lets nobody in at all.
+  if (!staffSheets) {
     console.warn(
-      `The staff list shares a spreadsheet with the queue, so anyone who can open it can read who has access.\n` +
-        "Set GOOGLE_STAFF_SHEETS_ID to a spreadsheet shared only with owners and this service account to keep it to them.",
+      "GOOGLE_STAFF_SHEETS_ID is not set — only the owners in ADMIN_EMAILS can sign in, and nobody can be given access.\n" +
+        "Create a spreadsheet, share it as an Editor with this service account, and set GOOGLE_STAFF_SHEETS_ID to its id.",
     );
   }
   if (auth.allowed.size === 0) {
     console.warn(
-      "ADMIN_EMAILS is empty — only addresses in the staff tab can sign in.",
+      staffSheets
+        ? "ADMIN_EMAILS is empty — only addresses in the staff tab can sign in."
+        : "ADMIN_EMAILS is empty and there is no staff spreadsheet — nobody can sign in.",
     );
   }
 }
@@ -155,7 +159,11 @@ store.list().catch((error) => {
   console.warn("Could not read the queue at startup:", error);
 });
 
-const app = createApp(store, passcode, staticDir, allowRemoteAdmin, { staff });
+const app = createApp(store, passcode, staticDir, allowRemoteAdmin, {
+  staff,
+  // Each link opens its own tab: the log, or the staff list.
+  linkToTab: (config) => tabUrl(config),
+});
 
 // Only behind a proxy that sets X-Forwarded-For itself, such as Cloud Run.
 // Off by default: with it on, anyone who can reach the port directly can forge

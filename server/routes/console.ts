@@ -2,7 +2,7 @@ import { Router } from "express";
 import { ALERT_WINDOW_MS } from "../lib/alerts.js";
 import { authConfig } from "../lib/auth.js";
 import { wrap } from "../lib/http.js";
-import { sheetUrl, sheetsConfig } from "../sheet/sheets.js";
+import { sheetsConfig } from "../sheet/sheets.js";
 import type { RouteContext } from "./context.js";
 
 /** What the console asks about itself: where the records are, and who is probing. */
@@ -12,6 +12,8 @@ export function consoleRoutes({
   requireOwnerOfRecords,
   identify,
   recentFailures,
+  linkToTab,
+  staff,
 }: RouteContext): Router {
   const routes = Router();
 
@@ -29,7 +31,7 @@ export function consoleRoutes({
       // back to offering the current-list download instead of a link.
       res.json({
         ok: true,
-        sheetUrl: config && mayLink ? sheetUrl(config) : null,
+        sheetUrl: config && mayLink ? await linkToTab(config) : null,
       });
     }),
   );
@@ -51,6 +53,8 @@ export function consoleRoutes({
           ? new Date(recent[recent.length - 1]).toISOString()
           : null,
         windowMinutes: ALERT_WINDOW_MS / 60_000,
+        // Owners can sign in without one, but nobody else can be let in.
+        missingStaffSheet: authConfig() !== null && !staff,
       });
     },
   );

@@ -1,7 +1,13 @@
-import { Router } from "express";
+import { type RequestHandler, Router } from "express";
 import { authConfig, isBootstrapOwner } from "../lib/auth.js";
 import { wrap } from "../lib/http.js";
 import { isRole } from "../domain/staff.js";
+import {
+  serviceAccountEmail,
+  sheetUrl,
+  sheetsConfig,
+  staffSheetsConfig,
+} from "../sheet/sheets.js";
 import { isEmailish, normalizeEmail } from "../shared/email.js";
 import type { RouteContext } from "./context.js";
 
@@ -14,6 +20,18 @@ export function staffRoutes({
 }: RouteContext): Router {
   const routes = Router();
 
+  // Nowhere to write a change to. The list still reads, so owners can see why.
+  const requireStaffSheet: RequestHandler = (_req, res, next) => {
+    if (staff) {
+      next();
+      return;
+    }
+    res.status(501).json({
+      error:
+        "There is no staff spreadsheet yet, so nobody can be given access. See Staff access for how to set one up.",
+    });
+  };
+
   routes.get(
     "/",
     adminLimiter,
@@ -22,8 +40,18 @@ export function staffRoutes({
       const auth = authConfig();
       const who = await identify(req);
       const rows = (await staff?.list()) ?? [];
+      const sheets = sheetsConfig();
+      const staffSheets = sheets && staffSheetsConfig(sheets);
+      const account =
+        sheets && !staff ? await serviceAccountEmail(sheets) : null;
       res.json({
         you: who,
+        // Owners only, like everything on this route: the file that decides
+        // who may sign in. The file alone, which holds nothing but the list.
+        sheetUrl: staffSheets ? sheetUrl(staffSheets) : null,
+        // Where there is no staff spreadsheet, what owners need to make one:
+        // the address it has to be shared with for this server to use it.
+        missingSheet: staff ? null : { shareWith: account ? [account] : [] },
         // Named separately so the console can show they are not removable
         // here rather than offering a button that cannot work.
         bootstrapOwners: [...(auth?.allowed ?? [])],
@@ -49,6 +77,7 @@ export function staffRoutes({
     "/",
     adminLimiter,
     requireOwner,
+    requireStaffSheet,
     wrap(async (req, res) => {
       const email = normalizeEmail(String(req.body?.email ?? ""));
       const role = req.body?.role;
@@ -89,6 +118,7 @@ export function staffRoutes({
     "/:email",
     adminLimiter,
     requireOwner,
+    requireStaffSheet,
     wrap(async (req, res) => {
       const email = normalizeEmail(String(req.params.email));
       const who = await identify(req);

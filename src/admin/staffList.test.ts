@@ -12,6 +12,8 @@ const member = (over: Partial<StaffMember> = {}): StaffMember => ({
 
 const list = (over: Partial<StaffList> = {}): StaffList => ({
   you: { email: "boss@clinic.org", role: "owner" },
+  sheetUrl: null,
+  missingSheet: null,
   bootstrapOwners: [],
   redundantRows: [],
   members: [],

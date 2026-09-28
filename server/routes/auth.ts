@@ -13,7 +13,7 @@ import {
 } from "../lib/auth.js";
 import { wrap, type Req } from "../lib/http.js";
 import type { AuthErrorCode } from "../shared/authErrors.js";
-import { sheetUrl, sheetsConfig } from "../sheet/sheets.js";
+import { sheetsConfig } from "../sheet/sheets.js";
 import type { RouteContext } from "./context.js";
 
 const oauthClient = (req: Req) => {
@@ -41,6 +41,7 @@ export function authRoutes({
   identify,
   roleForEmail,
   noteFailure,
+  linkToTab,
 }: RouteContext): Router {
   const routes = Router();
 
@@ -73,7 +74,8 @@ export function authRoutes({
         // The spreadsheet holds every month, not just today's queue, so the
         // link to it is an owner's. Withheld here rather than hidden in the
         // console, which would only be a hidden button.
-        sheetUrl: sheets && who.role === "owner" ? sheetUrl(sheets) : null,
+        sheetUrl:
+          sheets && who.role === "owner" ? await linkToTab(sheets) : null,
       });
     }),
   );

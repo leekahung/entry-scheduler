@@ -196,6 +196,8 @@ export type AdminAlerts = {
   failedAttempts: number;
   lastAttemptAt: string | null;
   windowMinutes: number;
+  /** No staff spreadsheet is set up, so only the server's owners can sign in. */
+  missingStaffSheet: boolean;
 };
 
 /** Failed sign-in attempts, so the console can warn staff someone is probing. */

@@ -141,7 +141,7 @@ export function createGuards({
       res.status(401).json({ error: "Admin passcode required." });
       return;
     }
-    if (!authConfig() || !staff) {
+    if (!authConfig()) {
       res.status(501).json({
         error:
           "Managing staff access needs Google sign-in configured on the server.",

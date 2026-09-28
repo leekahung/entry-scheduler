@@ -7,6 +7,7 @@ const ALERTS = {
   failedAttempts: 4,
   lastAttemptAt: null,
   windowMinutes: 15,
+  missingStaffSheet: false,
 };
 
 const show = (mode: SignInMode) =>
@@ -50,5 +51,23 @@ describe("the failed sign-in alert", () => {
       />,
     );
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+describe("the missing staff spreadsheet", () => {
+  it("tells owners where to set one up", () => {
+    render(
+      <AdminBanners
+        offline={false}
+        rejected={null}
+        onResume={vi.fn()}
+        monthToClose=""
+        alerts={{ ...ALERTS, failedAttempts: 0, missingStaffSheet: true }}
+        mode="google"
+      />,
+    );
+    const banner = screen.getByRole("status").textContent ?? "";
+    expect(banner).toContain("No staff spreadsheet is set up");
+    expect(banner).toContain("Staff access");
   });
 });

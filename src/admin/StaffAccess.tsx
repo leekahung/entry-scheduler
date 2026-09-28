@@ -3,6 +3,7 @@ import { isEmailish, normalizeEmail } from "../../server/shared/email";
 import type { StaffList, StaffRole } from "../shared/types";
 import { addStaff, fetchStaff, removeStaff } from "../shared/api";
 import ConfirmDialog from "./ConfirmDialog";
+import { ExternalIcon } from "./icons";
 import { currentRole, duplicateReason, ROLE_WORD } from "./staffList";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 
@@ -100,94 +101,137 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
       aria-labelledby="staff-heading"
       className="mt-2 flex flex-col gap-3 rounded-xl border border-border bg-surface p-5"
     >
-      <div>
-        <h2 id="staff-heading" className="mx-0 mt-0 mb-1 text-lead">
-          Staff access
-        </h2>
-        <p className="m-0 text-muted">
-          Owners can change this list. Everyone here signs in with their own
-          Google account.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 id="staff-heading" className="mx-0 mt-0 mb-1 text-lead">
+            Staff access
+          </h2>
+          <p className="m-0 text-muted">
+            Owners can change this list. Everyone here signs in with their own
+            Google account.
+          </p>
+        </div>
+        {list.sheetUrl && (
+          <a
+            data-button
+            className="btn-secondary gap-2"
+            href={list.sheetUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalIcon />
+            Open staff spreadsheet
+          </a>
+        )}
       </div>
 
-      <form
-        className="flex flex-wrap items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          // The browser's own email check accepts "sam@clinic"; the server
-          // does not, so use the server's rule and say so before sending.
-          const address = normalizeEmail(email);
-          if (!isEmailish(address)) {
-            setError("That is not a valid email address.");
-            return;
-          }
-          // Re-adding someone rewrites their row, silently changing who
-          // granted the access and when. Say so instead when the add would
-          // achieve nothing.
-          const duplicate = duplicateReason(list, address, role);
-          if (duplicate) {
-            setError(duplicate);
-            return;
-          }
-          // Adding an address already on the list rewrites its row, so the
-          // same form that grants access is also how a role is taken away.
-          // It answers like any other add, which is no way to find out you
-          // have just demoted an owner — least of all yourself.
-          // The server refuses this too. Caught here so it reads as the
-          // form's answer rather than as a failed request.
-          if (address === list.you?.email && role === "staff") {
-            setError("You cannot change your own access to staff.");
-            return;
-          }
-          const listed = currentRole(list, address);
-          if (listed) {
-            setConfirming({
-              kind: "role",
-              email: address,
-              from: listed,
-              to: role,
-            });
-            return;
-          }
-          void grant(address, role);
-        }}
-      >
-        <div className="flex field-wide flex-col gap-2">
-          <label htmlFor="staff-email">Add a Google address</label>
-          <input
-            id="staff-email"
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="e.g. kim@clinic.org"
-            required
-          />
-        </div>
+      {list.missingSheet ? (
         <div className="flex flex-col gap-2">
-          <label htmlFor="staff-role">Access</label>
-          <select
-            id="staff-role"
-            value={role}
-            onChange={(event) => setRole(event.target.value as StaffRole)}
-          >
-            <option value="staff">Staff — can work the queue</option>
-            <option value="owner">Owner — can also change this list</option>
-          </select>
+          <p className="m-0">
+            <strong>No staff spreadsheet is set up</strong>, so only the owners
+            set on the server can sign in and nobody else can be given access.
+            To set one up:
+          </p>
+          <ol className="m-0 list-decimal pl-5">
+            <li>Create a new Google spreadsheet for the staff list.</li>
+            <li>
+              Share it as an Editor with{" "}
+              {list.missingSheet.shareWith.length > 0
+                ? list.missingSheet.shareWith.map((address, index) => (
+                    <span key={address}>
+                      {index > 0 && " and "}
+                      <strong className="break-all">{address}</strong>
+                    </span>
+                  ))
+                : "the service account this server runs as"}
+              .
+            </li>
+            <li>
+              Set <code>GOOGLE_STAFF_SHEETS_ID</code> on the server to its id —
+              the long code in its address — and restart it.
+            </li>
+          </ol>
         </div>
-        {/* A box the height of the controls beside it, so the shorter button
+      ) : (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            // The browser's own email check accepts "sam@clinic"; the server
+            // does not, so use the server's rule and say so before sending.
+            const address = normalizeEmail(email);
+            if (!isEmailish(address)) {
+              setError("That is not a valid email address.");
+              return;
+            }
+            // Re-adding someone rewrites their row, silently changing who
+            // granted the access and when. Say so instead when the add would
+            // achieve nothing.
+            const duplicate = duplicateReason(list, address, role);
+            if (duplicate) {
+              setError(duplicate);
+              return;
+            }
+            // Adding an address already on the list rewrites its row, so the
+            // same form that grants access is also how a role is taken away.
+            // It answers like any other add, which is no way to find out you
+            // have just demoted an owner — least of all yourself.
+            // The server refuses this too. Caught here so it reads as the
+            // form's answer rather than as a failed request.
+            if (address === list.you?.email && role === "staff") {
+              setError("You cannot change your own access to staff.");
+              return;
+            }
+            const listed = currentRole(list, address);
+            if (listed) {
+              setConfirming({
+                kind: "role",
+                email: address,
+                from: listed,
+                to: role,
+              });
+              return;
+            }
+            void grant(address, role);
+          }}
+        >
+          <div className="flex field-wide flex-col gap-2">
+            <label htmlFor="staff-email">Add a Google address</label>
+            <input
+              id="staff-email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="e.g. kim@clinic.org"
+              required
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <label htmlFor="staff-role">Access</label>
+            <select
+              id="staff-role"
+              value={role}
+              onChange={(event) => setRole(event.target.value as StaffRole)}
+            >
+              <option value="staff">Staff — can work the queue</option>
+              <option value="owner">Owner — can also change this list</option>
+            </select>
+          </div>
+          {/* A box the height of the controls beside it, so the shorter button
           is centred on the input and the select rather than sitting on their
           bottom edge. The two heights are the ones the base stylesheet gives
           every field, coarse pointers included. */}
-        <div className="flex h-11 items-center pointer-coarse:h-12">
-          <button
-            type="submit"
-            className="pointer-fine:min-h-9 px-3 py-1.5"
-            disabled={busy || !email.trim()}
-          >
-            Add
-          </button>
-        </div>
-      </form>
+          <div className="flex h-11 items-center pointer-coarse:h-12">
+            <button
+              type="submit"
+              className="pointer-fine:min-h-9 px-3 py-1.5"
+              disabled={busy || !email.trim()}
+            >
+              Add
+            </button>
+          </div>
+        </form>
+      )}
 
       {error && <p className="m-0 text-meta text-danger">{error}</p>}
 

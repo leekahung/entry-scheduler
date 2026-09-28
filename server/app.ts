@@ -12,6 +12,7 @@ import { entryRoutes } from "./routes/entries.js";
 import { queueRoutes } from "./routes/queue.js";
 import { staffRoutes } from "./routes/staff.js";
 import type { StaffStore } from "./domain/staff.js";
+import { type SheetsConfig, sheetUrl } from "./sheet/sheets.js";
 import type { Store } from "./sheet/store.js";
 
 /**
@@ -22,13 +23,21 @@ import type { Store } from "./sheet/store.js";
  *
  * The routes themselves live in `./routes`; what is assembled here is the
  * wiring they share — the limiters, the guards, and who a request is.
+ * `linkToTab` makes the spreadsheet links; production passes `tabUrl`, and
+ * the default links the file alone without asking Google anything.
  */
 export function createApp(
   store: Store,
   adminPasscode: string,
   staticDir?: string,
   allowRemoteAdmin = false,
-  { staff }: { staff?: StaffStore } = {},
+  {
+    staff,
+    linkToTab = async (config) => sheetUrl(config),
+  }: {
+    staff?: StaffStore;
+    linkToTab?: (config: SheetsConfig) => Promise<string>;
+  } = {},
 ) {
   const app = express();
   app.disable("x-powered-by");
@@ -116,6 +125,7 @@ export function createApp(
   const context: RouteContext = {
     store,
     staff,
+    linkToTab,
     adminLimiter,
     joinLimiter,
     joinCapLimiter,

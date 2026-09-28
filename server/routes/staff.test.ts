@@ -76,6 +76,9 @@ describe("managing who has access", () => {
 
   afterEach(() => {
     for (const key of Object.keys(OAUTH)) delete process.env[key];
+    // Here as well as in each test, so a failed assertion cannot leak them on.
+    delete process.env.GOOGLE_SHEETS_ID;
+    delete process.env.GOOGLE_STAFF_SHEETS_ID;
   });
 
   it("keeps the records to owners: a staff session cannot save the month tabs", async () => {
@@ -105,6 +108,122 @@ describe("managing who has access", () => {
       .post("/api/admin/verify")
       .set("cookie", as("boss@clinic.org"));
     expect(asOwner.body.sheetUrl).toContain("sheet-123");
+    delete process.env.GOOGLE_SHEETS_ID;
+  });
+
+  it("links owners to the staff list's own spreadsheet where it has one", async () => {
+    process.env.GOOGLE_SHEETS_ID = "sheet-123";
+    process.env.GOOGLE_STAFF_SHEETS_ID = "staff-456";
+    const res = await request(withStaffServer)
+      .get("/api/admin/staff")
+      .set("cookie", as("boss@clinic.org"));
+    expect(res.body.sheetUrl).toBe(
+      "https://docs.google.com/spreadsheets/d/staff-456/edit",
+    );
+    delete process.env.GOOGLE_SHEETS_ID;
+    delete process.env.GOOGLE_STAFF_SHEETS_ID;
+  });
+
+  it("never links the queue's spreadsheet as the staff list", async () => {
+    process.env.GOOGLE_SHEETS_ID = "sheet-123";
+    const res = await request(withStaffServer)
+      .get("/api/admin/staff")
+      .set("cookie", as("boss@clinic.org"));
+    expect(res.body.sheetUrl).toBeNull();
+  });
+
+  describe("with no staff spreadsheet set up", () => {
+    // No staff store: what the server runs with when GOOGLE_STAFF_SHEETS_ID is unset.
+    const bare = () => createApp(store, PASSCODE);
+    const owner = () => as("boss@clinic.org");
+
+    afterEach(() => {
+      delete process.env.GOOGLE_SA_EMAIL;
+      delete process.env.GOOGLE_SA_KEY;
+    });
+
+    it("still shows owners the list, with who a new spreadsheet must be shared with", async () => {
+      Object.assign(process.env, {
+        GOOGLE_SHEETS_ID: "sheet-123",
+        // A key in the environment, so the address is read from it rather
+        // than asked of Google.
+        GOOGLE_SA_EMAIL: "queue@project.iam.gserviceaccount.com",
+        GOOGLE_SA_KEY: "key",
+      });
+      const res = await request(bare())
+        .get("/api/admin/staff")
+        .set("cookie", owner());
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({
+        sheetUrl: null,
+        missingSheet: { shareWith: ["queue@project.iam.gserviceaccount.com"] },
+        bootstrapOwners: ["boss@clinic.org"],
+        members: [],
+      });
+    });
+
+    it("refuses to add or remove anyone, saying why", async () => {
+      const added = await request(bare())
+        .post("/api/admin/staff")
+        .set("cookie", owner())
+        .send({ email: "kim@clinic.org", role: "staff" });
+      expect(added.status).toBe(501);
+      expect(added.body.error).toMatch(/no staff spreadsheet/i);
+
+      const removed = await request(bare())
+        .delete("/api/admin/staff/kim@clinic.org")
+        .set("cookie", owner());
+      expect(removed.status).toBe(501);
+    });
+
+    it("lets owners in, and tells them it is missing", async () => {
+      const res = await request(bare())
+        .get("/api/admin/alerts")
+        .set("cookie", owner());
+      expect(res.status).toBe(200);
+      expect(res.body.missingStaffSheet).toBe(true);
+    });
+
+    it("raises nothing once a staff spreadsheet is set up", async () => {
+      const res = await request(withStaffServer)
+        .get("/api/admin/alerts")
+        .set("cookie", owner());
+      expect(res.body.missingStaffSheet).toBe(false);
+    });
+  });
+
+  it("opens the queue on its log tab, and the staff spreadsheet as a whole", async () => {
+    process.env.GOOGLE_SHEETS_ID = "sheet-123";
+    process.env.GOOGLE_STAFF_SHEETS_ID = "staff-456";
+    const tabbed = createApp(store, PASSCODE, undefined, false, {
+      staff,
+      linkToTab: async ({ spreadsheetId, tab }) => `${spreadsheetId}#${tab}`,
+    });
+    const owner = as("boss@clinic.org");
+
+    const me = await request(tabbed).get("/api/auth/me").set("cookie", owner);
+    const verify = await request(tabbed)
+      .post("/api/admin/verify")
+      .set("cookie", owner);
+    const list = await request(tabbed)
+      .get("/api/admin/staff")
+      .set("cookie", owner);
+
+    expect(me.body.sheetUrl).toBe("sheet-123#Sheet1");
+    expect(verify.body.sheetUrl).toBe("sheet-123#Sheet1");
+    expect(list.body.sheetUrl).toBe(
+      "https://docs.google.com/spreadsheets/d/staff-456/edit",
+    );
+  });
+
+  it("keeps the staff spreadsheet link from staff", async () => {
+    process.env.GOOGLE_SHEETS_ID = "sheet-123";
+    await staff.add("kim@clinic.org", "staff", "boss@clinic.org");
+    const res = await request(withStaffServer)
+      .get("/api/admin/staff")
+      .set("cookie", as("kim@clinic.org"));
+    expect(res.status).toBe(403);
+    expect(res.body.sheetUrl).toBeUndefined();
     delete process.env.GOOGLE_SHEETS_ID;
   });
 
