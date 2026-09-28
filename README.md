@@ -332,8 +332,8 @@ Set these on the host:
 | `PORT`           | Most hosts set this for you; defaults to 3001.           |
 | `GOOGLE_SHEETS_ID` | Required. The queue is stored here; the id from the sheet URL. |
 | `GOOGLE_SHEETS_TAB` | Optional. Tab to write, defaults to `Sheet1`, the name Google gives the first tab of a new spreadsheet. |
-| `GOOGLE_STAFF_TAB` | Optional. Tab holding the staff list, defaults to `Staff`. |
-| `GOOGLE_STAFF_SHEETS_ID` | Optional. Keeps the staff list in its own spreadsheet, shared only with owners. Defaults to the queue's spreadsheet, where anyone who can open the file can read it. |
+| `GOOGLE_STAFF_SHEETS_ID` | The spreadsheet the staff list is kept in, separate from the queue's. Without it only the `ADMIN_EMAILS` owners can sign in, and the console tells them how to set one up. |
+| `GOOGLE_STAFF_TAB` | Optional. Tab in that spreadsheet holding the list, defaults to `Staff`. |
 | `TZ`             | Optional. The clinic's zone, defaulting to `America/Los_Angeles`. Months and stamps are cut in local time, so a clinic in another zone sets this; a host that names none is pinned to Pacific rather than left on the container's UTC. |
 | `GOOGLE_OAUTH_CLIENT_ID` | Turns on Google sign-in for staff. With it set, the passcode is no longer accepted. |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | From the same OAuth client. |
@@ -443,8 +443,8 @@ Access has two levels:
 
 `ADMIN_EMAILS` names owners in the environment. They are always owners and
 cannot be removed through the console, so a mistake in the list can never lock
-everyone out. Everyone else lives in the `Staff` tab of the same spreadsheet,
-which the app creates on first use.
+everyone out. Everyone else lives in the `Staff` tab of a spreadsheet of its own,
+named by `GOOGLE_STAFF_SHEETS_ID`; the app creates the tab on first use.
 
 Nobody can take their own access away, by either road: an owner cannot remove
 their own row, and cannot re-add themselves as staff to the same end. Both are
@@ -593,25 +593,26 @@ the same thing the **Remove** button already refuses to let anyone do to their
 own access.
 
 The **Staff access** panel in the console opens only for owners, and the server
-enforces it — but the list itself lives in the spreadsheet, and Google Sheets has no way
-to keep one tab from someone who can open the file. A protected range stops
-*edits*, not reads, and a hidden sheet is unhidden from a menu.
+enforces it — but the list itself lives in a spreadsheet, and anyone who can
+edit a file can edit every tab in it. A list kept inside the queue's
+spreadsheet would let anyone with edit access to the records write themselves
+an `owner` row. So the queue's spreadsheet holds the entries and nothing else,
+and the list has a spreadsheet of its own, shared only with owners:
 
-So if staff can open the queue spreadsheet at all, they can read who has
-access. To keep it to owners, put the list in a spreadsheet of its own:
+1. Create a spreadsheet for the staff list.
+2. Share it **as an Editor** with the service account the server runs as —
+   and, if a development machine uses the same file, with that one's too.
+3. Set `GOOGLE_STAFF_SHEETS_ID` to its id. The app creates the `Staff` tab on
+   first write (`GOOGLE_STAFF_TAB` renames it).
 
-1. Create a second spreadsheet, shared only with the owners **and the service
-   account, as an Editor**.
-2. Set `GOOGLE_STAFF_SHEETS_ID` to its id. `GOOGLE_STAFF_TAB` still names the
-   tab within it, and the app creates that tab on first write.
+Until that is done the server still starts: the owners in `ADMIN_EMAILS` can
+sign in, and nobody else can. It says so at startup, and the console shows
+owners a banner and, in **Staff access**, these same steps with the service
+account's address filled in.
 
-The server logs a warning at startup while the two share a file, so a
-deployment cannot quietly stay that way by accident.
-
-Whichever file it lives in, protecting the tab is still worth doing: it stops a
-staff member with edit access from writing themselves an `owner` row. In Google
-Sheets, right-click the tab → **Protect sheet**, and leave only the service
-account able to edit.
+**Open staff spreadsheet**, at the top of the panel, opens that file, which
+holds nothing but the list; the toolbar's **Open spreadsheet** opens the
+queue's on the sign-in log. Only owners are ever sent either address.
 
 ## Month tabs
 
