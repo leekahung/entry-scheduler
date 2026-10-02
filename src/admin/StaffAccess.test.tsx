@@ -205,9 +205,8 @@ describe("removing someone", () => {
   });
 });
 
-// The add form is also how a role is taken away: adding an address already on
-// the list rewrites its row. Answering like an ordinary add is no way to find
-// out an owner has just been demoted.
+// Re-adding a listed address rewrites its row, so the add form can demote an
+// owner; it must not answer like an ordinary add.
 describe("changing the role of someone already listed", () => {
   const withOwner: StaffList = {
     ...LIST,

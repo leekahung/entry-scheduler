@@ -1,17 +1,9 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Runs `poll` now and every `ms` after, but only while the tab is on screen.
- *
- * A phone left in a pocket would otherwise keep polling all afternoon, and the
- * board's rate limit is shared by a whole waiting room behind one address, so
- * the tabs nobody is reading are spending the budget of the ones that are.
- * Coming back polls straight away only where the wait has run out meanwhile:
- * a board that went stale is refetched, but flicking between two tabs does not
- * ask the server every time, whatever `ms` says.
- *
- * `active` is what a caller with nothing to poll for yet passes — a console
- * that is signed out, or one the server has stopped answering.
+ * Runs `poll` now and every `ms` after, only while the tab is visible, since
+ * hidden tabs would spend a waiting room's shared rate limit.
+ * Coming back polls at once only if the wait ran out; `active` pauses it.
  */
 export function usePoll(poll: () => void, ms: number, active = true): void {
   // Through a ref, so a caller that rebuilds its callback on every render does

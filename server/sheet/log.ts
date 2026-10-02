@@ -3,9 +3,7 @@ import { toStamp } from "./stamp.js";
 
 /**
  * The SIGN IN LOG SPREADSHEET header row, in its own order.
- * The spreadsheet carries these columns first, then the machine fields in
- * `server/sheet/columns.ts`, so the human log and the exports can never
- * drift.
+ * The tab carries these first, then the machine fields in `columns.ts`.
  */
 export const LOG_COLUMNS: readonly [
   string,

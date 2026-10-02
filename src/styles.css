@@ -143,16 +143,8 @@
   color: var(--color-danger);
 }
 
-/* Toasts: what the console and the kiosk say about the work they are doing.
-   Fixed to the top, where a glance goes first and where nothing covers the
-   button that was just pressed. Left on the console, where the only thing
-   under them is the heading — centred, they sat over the header's own buttons
-   for as long as they were up. The host does not take pointer events; each
-   toast takes its own back, or a toast would swallow taps on what is under
-   it. */
-/* Bottom left, away from the standing banners at the top of the console and
-   clear of the Actions column, whose selects and buttons a toast in the other
-   corner would sit on top of while staff were still clicking them. */
+/* Toasts, bottom left: clear of the console's banners and the Actions column.
+   The host ignores pointer events so toasts never swallow taps beneath. */
 .toast-host {
   position: fixed;
   inset-inline: 0;
@@ -379,14 +371,8 @@
       box-shadow 120ms ease;
   }
 
-  /* Hover feedback, and only where a real pointer can hover: on a touch
-     screen these states stick after a tap and read as though the control is
-     still doing something.
-
-     Dimming rather than naming a colour, because these controls set their own
-     backgrounds — accent, surface, danger — and one hover colour would have to
-     be written, and kept in step, for each of them. Tabs are left out: they
-     are not boxes, and shading one would put the box back. */
+  /* Hover dimming, only where a real pointer hovers (on touch it sticks).
+     Dimming suits every background; tabs are left out, having no box. */
   @media (hover: hover) {
     button:not(:disabled, [role="tab"]):hover,
     a[data-button]:hover {

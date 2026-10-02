@@ -14,9 +14,7 @@ export type Editing = {
 
 /**
  * The row being edited and its draft.
- * The draft lives out here rather than in the editor: an entry can move
- * between tabs mid-edit (an appointment coming due, another admin changing its
- * status), which unmounts the editor and would take the draft with it.
+ * Kept out of the editor, which unmounts when its entry moves between tabs.
  */
 export function useEntryEditor() {
   const [editing, setEditing] = useState<Editing | null>(null);

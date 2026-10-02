@@ -81,9 +81,7 @@ describe("queueOrder", () => {
       scheduledFor: "2026-08-17T15:00:00.000Z",
     });
 
-    // Asserted on the comparator in both directions, not via sort(): sort
-    // only ever calls one orientation, so a rule that holds one way round
-    // and breaks the other would slip through unnoticed.
+    // The comparator both ways round, since sort() only calls one orientation.
     const cmp = queueOrder(NOON);
     expect(cmp(walkIn, undue)).toBeLessThan(0);
     expect(cmp(undue, walkIn)).toBeGreaterThan(0);

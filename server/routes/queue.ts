@@ -41,9 +41,8 @@ export function queueRoutes({
       // can never disagree about an appointment that comes due mid-request.
       const now = Date.now();
       res.json(
-        // Filtering copies, which also keeps the sort off the store's cached
-        // array — sorting that in place would reorder the rows a concurrent
-        // write is about to save.
+        // Filtering copies, keeping the sort off the store's cached array that
+        // a concurrent write is about to save.
         entries
           .filter((entry) => !isRemoved(entry))
           .sort(queueOrder(now))

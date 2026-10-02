@@ -27,11 +27,8 @@ function takeAuthError(): string {
 }
 
 /**
- * Holds the staff session for one tab: a Google sign-in where the server has
- * it configured, otherwise the shared passcode.
- *
- * Either way the session is re-checked with the server on load rather than
- * trusted from stored state.
+ * The staff session for one tab: Google sign-in, or the shared passcode.
+ * Re-checked with the server on load rather than trusted from storage.
  */
 export function useAdminSession() {
   const [mode, setMode] = useState<SignInMode>(null);
@@ -68,9 +65,8 @@ export function useAdminSession() {
         if (!saved) return;
         const result = await verifyPasscode(saved);
         if (!active) return;
-        // A lockout is a verdict on the address, not on the passcode, so it
-        // must not throw away a session that is probably still good — but say
-        // so, or the sign-in form looks broken for no visible reason.
+        // A lockout is about the address, not the passcode: keep the session,
+        // but say why the form will not work.
         if (result.lockedOut) {
           setError(LOCKED_OUT);
           return;

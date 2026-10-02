@@ -81,9 +81,7 @@ export default function AdminBanners({
           {alerts.lastAttemptAt &&
             `, most recent ${minutesAgo(alerts.lastAttemptAt)}`}
           . Check with the other admins — if it was none of them,{" "}
-          {/* A deployment signing staff in with Google has no passcode to
-            rotate, and telling an owner to rotate one sends them looking for
-            a control that is not there. */}
+          {/* Google sign-in has no passcode to rotate. */}
           {mode === "passcode"
             ? "rotate the passcode."
             : "review who has access."}

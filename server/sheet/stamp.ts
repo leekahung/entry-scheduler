@@ -5,9 +5,8 @@
  */
 export function toStamp(iso: string): string {
   const at = new Date(iso);
-  // Handed back as it stands when there is no date in it. The board is written
-  // back on every change, so blanking it here would erase the cell on the
-  // sheet — a hand-typed one has to survive the round trip to be corrected.
+  // Returned as is, since the board is rewritten on every change and a
+  // hand-typed cell has to survive to be corrected.
   if (Number.isNaN(at.getTime())) return iso;
   const pad = (part: number) => String(part).padStart(2, "0");
   return (
@@ -17,10 +16,8 @@ export function toStamp(iso: string): string {
 }
 
 /**
- * That stamp back to the ISO the rest of the app speaks. Anything else a date
- * can be read from is accepted too, which covers the ISO an older sheet holds
- * and a time typed in by hand. A cell no date can be read from is kept as it
- * was typed rather than dropped.
+ * That stamp back to ISO. Anything else readable as a date is accepted too,
+ * such as an older sheet's ISO; unreadable text is kept as typed.
  */
 export function fromStamp(raw: string): string {
   const value = raw.trim();

@@ -5,11 +5,8 @@ export type ToastTone = "pending" | "success" | "error";
 export type Toast = { id: number; tone: ToastTone; message: string };
 
 /**
- * How long a toast stays up before it clears itself.
- *
- * A failure gets twice as long as a success: it carries more to read, and it
- * is the one somebody may have looked away from. Both can still be dismissed
- * outright, and neither waits for it.
+ * How long a toast stays up; failures twice as long, having more to read.
+ * Either can be dismissed sooner.
  */
 const SUCCESS_MS = 3500;
 const ERROR_MS = 7000;
@@ -21,10 +18,8 @@ const ERROR_MS = 7000;
 const PENDING_AFTER_MS = 400;
 
 /**
- * What a failure is called.
- *
- * A plain string is the everything-else case; the other two are worth naming
- * separately because they are the failures a person can act on.
+ * What a failure is called. Beyond the fallback, the two failures a person can
+ * act on get their own wording.
  */
 export type ToastFailure = {
   /** The server broke, or answered with nothing worth repeating. */
@@ -36,12 +31,8 @@ export type ToastFailure = {
 };
 
 /**
- * Which statuses carry a message worth showing as it is.
- *
- * The server names these precisely — "Name is required", "Only an owner can
- * do that", "Too many attempts". A 500 is the opposite: its body reads
- * "Something went wrong", which tells a visitor nothing they did not know,
- * so those get our own words instead.
+ * Statuses whose server message is shown as is, since it names the problem.
+ * A 500 only says "Something went wrong", so it gets our own words.
  */
 const SPEAKS_FOR_ITSELF = new Set([400, 403, 429, 501]);
 
@@ -100,9 +91,7 @@ function successMessage<T>(
 
 /**
  * The console's and the kiosk's running commentary on what they are doing.
- *
- * Errors stay until dismissed and successes clear themselves: a failure is the
- * one worth reading, and nobody is watching a kiosk for it.
+ * Successes clear sooner than failures, which are the ones worth reading.
  */
 export function useToasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -145,12 +134,8 @@ export function useToasts() {
   );
 
   /**
-   * Runs one operation and narrates it. Resolves to whether it landed, so a
-   * caller can close its editor or leave the form up.
-   *
-   * A failure's own message is preferred to the label: the server names the
-   * problem ("Name is required", "spreadsheet was never shared") better than
-   * anything this side could guess.
+   * Runs one operation and narrates it, resolving to whether it landed.
+   * The failure's own message beats the label when it has one.
    */
   const track = useCallback(
     async <T,>(labels: ToastLabels<T>, action: () => Promise<T>) => {
@@ -187,12 +172,8 @@ export function useToasts() {
 export type Toasts = ReturnType<typeof useToasts>;
 
 /**
- * Where the toasts appear.
- *
- * Two live regions, both always in the document: a screen reader announces
- * what is inserted into a region that was already there, so one that appears
- * along with its first toast may say nothing at all. Errors go in the
- * assertive one — they interrupt, which is the point of them.
+ * Where the toasts appear: two live regions, always present so screen readers
+ * announce what is added. Errors go in the assertive one.
  */
 export function ToastList({
   toasts,

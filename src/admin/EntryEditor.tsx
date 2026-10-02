@@ -28,11 +28,8 @@ import type { EntryChanges } from "../hooks/useEntries";
 /** The form's own shape: every field a string or code the inputs can hold. */
 import type { EditorDraft } from "./editorDraft";
 
-// The log needs a date of birth and a phone number on every row; the rest of
-// the sheet is filled in as the visit goes. A field is tinted only while it
-// is still empty, so the colour marks work left to do rather than labelling
-// the field for good — and never by colour alone: the two that must be filled
-// in are also marked `required`, and the legend below says so in words.
+// The log needs a DOB and phone on every row. A field is tinted only while
+// empty, and never by colour alone: those two are also `required`.
 const MUST_FILL = "bg-alert-surface border-alert-border";
 const OPTIONAL = "bg-caution-surface border-caution-border";
 
@@ -55,8 +52,7 @@ type Props = {
 
 /**
  * The expanded row editor.
- * Its draft is seeded once when the editor opens and owned by the page, so
- * neither the poll refreshing the list nor the row moving between tables can
+ * The page owns its draft, so neither polling nor the row moving tables can
  * overwrite half-typed changes.
  */
 export default function EntryEditor({
@@ -83,9 +79,8 @@ export default function EntryEditor({
     // only runs once they pass.
     event.preventDefault();
     setSaving(true);
-    // Only what changed: this draft was seeded when the editor opened, so
-    // sending untouched fields would overwrite whatever anyone else saved
-    // while it sat open.
+    // Only what changed, so untouched fields cannot overwrite what someone
+    // else saved meanwhile.
     const changes: EntryChanges = {};
     for (const key of Object.keys(draft) as (keyof EditorDraft)[]) {
       if (draft[key] === initial[key]) continue;
@@ -316,10 +311,8 @@ export default function EntryEditor({
         <button
           type="submit"
           className="card-mode:flex-1"
-          // The server refuses an empty update, so offering Save on an
-          // untouched row would answer a no-op with a failure message. What is
-          // missing from a required field is the browser's to report, not
-          // something to disable the button over.
+          // The server refuses an empty update. Missing required fields are the
+          // browser's to report, not a reason to disable the button.
           disabled={saving || !dirty}
         >
           {saving ? "Saving…" : "Save changes"}

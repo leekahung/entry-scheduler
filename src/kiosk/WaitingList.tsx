@@ -27,9 +27,7 @@ export default function WaitingList({ waiting, loaded, mineId }: Props) {
   // The heading keeps the whole count; only the rows are handed out a page at
   // a time, so a full room does not push the rest of the screen away.
   const page = usePaging(waiting);
-  // A page's worth of rows, always. The line moves while people are watching
-  // it, and a card that grew and shrank under them would take the rest of the
-  // screen with it — so a short page is padded out rather than closed up.
+  // Always a full page of rows, so the card never resizes while people watch.
   const fillers = PAGE_SIZE - page.rows.length;
   const empty = loaded ? "Nobody in line right now." : "Loading the line…";
 
@@ -51,10 +49,8 @@ export default function WaitingList({ waiting, loaded, mineId }: Props) {
               <span className="min-w-[2.5rem] font-bold text-muted tabular-nums">
                 #{entry.id}
               </span>
-              {/* Clipped rather than wrapped: the number is what the room is
-                  called by, and letting one long name wrap over six lines
-                  would push everyone else off the screen. min-w-0 is what
-                  lets a flex item shrink below its content at all. */}
+              {/* Clipped, not wrapped, so one long name cannot push the room
+                  off screen; min-w-0 lets the flex item shrink. */}
               <span className="min-w-0 flex-1 truncate" title={entry.name}>
                 {entry.name}
               </span>
@@ -63,10 +59,8 @@ export default function WaitingList({ waiting, loaded, mineId }: Props) {
               </span>
             </li>
           ))}
-          {/* The same markup rather than a measured height: a spacer in rem
-              would have to be re-measured for the kiosk's larger type and for
-              the padding a touch screen adds. This is exactly a row tall
-              because it is one. */}
+          {/* Same markup as a row, so it is exactly a row tall at any
+                  type size or touch padding. */}
           {Array.from({ length: Math.max(fillers, 0) }, (_, index) => (
             <li
               // biome-ignore lint/suspicious/noArrayIndexKey: a spacer has nothing else to key on

@@ -71,9 +71,8 @@ export function authRoutes({
               auth.sessionSecret,
             )
           : "",
-        // The spreadsheet holds every month, not just today's queue, so the
-        // link to it is an owner's. Withheld here rather than hidden in the
-        // console, which would only be a hidden button.
+        // Owners only: the file holds every month. Withheld here, not merely
+        // hidden in the console.
         sheetUrl:
           sheets && who.role === "owner" ? await linkToTab(sheets) : null,
       });
@@ -98,9 +97,8 @@ export function authRoutes({
     );
     res.redirect(
       setup.client.generateAuthUrl({
-        // "profile" is what carries the display name; without it the console
-        // has only an address to sign against the work, and the sign-in log
-        // reads as a column of email addresses.
+        // "profile" carries the display name, so the log shows names rather
+        // than email addresses.
         scope: ["openid", "email", "profile"],
         state,
         // Staff share machines; landing straight into the last account would

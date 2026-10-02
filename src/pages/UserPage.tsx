@@ -27,10 +27,8 @@ export default function UserPage() {
   // The kiosk rests on a start screen; the form only appears once someone
   // says they are here to check in.
   const [showForm, setShowForm] = useState(false);
-  // That the visit ended, rather than which visit it was. Held here and not
-  // in localStorage on purpose: the ticket's own keys are cleared the moment
-  // the entry resolves, so a reload lands on the start screen and a staff
-  // mis-click back to Waiting cannot draw the ticket back over the next person.
+  // Not in localStorage: a reload lands on the start screen, and a staff
+  // mis-click back to Waiting cannot redraw the ticket over the next person.
   const [justFinished, setJustFinished] = useState(false);
   const ticketRef = useRef<HTMLElement>(null);
   // Set only by a check-in on this device, so returning to a page that still
@@ -47,9 +45,8 @@ export default function UserPage() {
     fetchQueue()
       .then((entries) => {
         setQueue(entries);
-        // Only against a board that was read, so a failed poll leaves the
-        // ticket alone. A removed entry is absent rather than resolved, so
-        // nothing below notices it and the ticket outstays its visitor.
+        // Only from a board that was read. A removed entry is absent, not
+        // resolved, so this is what clears its ticket.
         setJustJoined((held) =>
           held &&
           !entries.some(
@@ -69,9 +66,8 @@ export default function UserPage() {
 
   async function handleSubmit(name: string, intake: VisitorIntake) {
     setSubmitting(true);
-    // The failure stays on screen until it is dismissed, and the form stays
-    // filled behind it: a visitor who could not check in has to be able to try
-    // again without typing their name a second time.
+    // The failure stays up and the form stays filled, so the visitor can
+    // retry without retyping.
     await toasts.track(
       {
         pending: "Checking you in\u2026",
@@ -84,10 +80,8 @@ export default function UserPage() {
         },
       },
       async () => {
-        // Everything after this line is presentation. The visitor is in the
-        // queue the moment this resolves, so nothing below may throw: telling
-        // someone their check-in failed when it did not is how they end up
-        // taking a second ticket.
+        // The visitor is checked in once this resolves, so nothing after may
+        // throw: a false failure leads to a second ticket.
         const entry = await joinQueue(name, intake);
         localStorage.setItem("entryId", String(entry.id));
         localStorage.setItem("entryName", entry.name);
@@ -97,16 +91,13 @@ export default function UserPage() {
         justCheckedIn.current = true;
         setMyId(entry.id);
         setMyName(entry.name);
-        // The ticket is drawn from this, so it appears whether or not the
-        // board can be read back. Deliberately not merged into `queue`: the
-        // public list holds shortened names, and this response carries the
-        // visitor's full one.
+        // The ticket draws from this whether or not the board reads back. Not
+        // merged into `queue`, which holds shortened names.
         setJustJoined(entry);
         setShowForm(false);
         setJustFinished(false);
-        // Ordering is the server's to decide, so the board is read back for
-        // it — but a blip here is not a failed check-in. The five-second poll
-        // picks it up either way.
+        // The server orders the board, so read it back; a blip is not a failed
+        // check-in, and the poll catches up.
         await fetchQueue()
           .then(setQueue)
           .catch(() => {});
@@ -116,9 +107,8 @@ export default function UserPage() {
     setSubmitting(false);
   }
 
-  // Backing out returns the kiosk to its start screen, with nothing kept —
-  // including a visit that ended while the form was open, which would
-  // otherwise thank whoever backed out for coming in.
+  // Back to the start screen with nothing kept, including a visit that ended
+  // meanwhile, so nobody is thanked for a visit that was not theirs.
   function cancelForm() {
     setShowForm(false);
     setJustFinished(false);
@@ -137,15 +127,13 @@ export default function UserPage() {
     setJustJoined(null);
   }, []);
 
-  // Only people actually in the line. An appointment still hours out is in the
-  // queue but not here yet, and counting it would tell the room a stranger is
-  // ahead of them — and could name them as "up next".
+  // Only people in the room: an appointment not yet due must not count as
+  // ahead of anyone, or be named "up next".
   const waiting = queue.filter(
     (entry) => entry.status !== "resolved" && entry.due,
   );
-  // Match on id *and* creation time: after a clear-all, numbering restarts, so
-  // a stale id would otherwise latch onto a stranger's entry. A device with no
-  // stored time cannot prove which entry is its own, so it claims none.
+  // Matched on id and sign-in time, since numbers are reused. A device with no
+  // stored time claims no entry.
   const savedCreatedAt = localStorage.getItem("entryCreatedAt");
   // Being helped is the end of the visit: a resolved entry has left the line,
   // so its ticket goes too and the kiosk is ready for the next person.
@@ -153,9 +141,8 @@ export default function UserPage() {
     entry.status !== "resolved" &&
     entry.id === myId &&
     entry.createdAt === savedCreatedAt;
-  // The board's copy where there is one, since it is the fresher of the two;
-  // otherwise what checking in returned, so a board that could not be read
-  // does not leave this device looking like nobody checked in.
+  // The board's copy if present, else the check-in response, so an unreadable
+  // board does not hide the ticket.
   const mine =
     queue.find(onBoard) ??
     (justJoined && onBoard(justJoined) ? justJoined : undefined);
@@ -167,9 +154,7 @@ export default function UserPage() {
   const queued = waiting.filter((entry) => entry.status === "new");
   const upNext = queued[0];
 
-  // Checking in swaps the form out for the ticket, which would otherwise drop
-  // focus to the top of the page. Keyed on the id, so a poll that re-renders
-  // the same ticket does not keep stealing focus back.
+  // Focus the new ticket once, keyed on its id, so polls do not steal focus.
   const ticketId = mine?.id;
   useEffect(() => {
     if (ticketId === undefined || !justCheckedIn.current) return;
@@ -177,9 +162,8 @@ export default function UserPage() {
     ticketRef.current?.focus();
   }, [ticketId]);
 
-  // Once the entry this device holds is resolved the visit is over, so the
-  // stored keys go too. Left behind, a staff mis-click back to Waiting would put
-  // that ticket back over a form the next visitor is already filling in.
+  // Once resolved, forget the stored keys, so a mis-click back to Waiting
+  // cannot redraw the ticket over the next visitor.
   const settledId = queue.find(
     (entry) =>
       entry.status === "resolved" &&
@@ -224,9 +208,7 @@ export default function UserPage() {
         <section
           ref={ticketRef}
           tabIndex={-1}
-          // Focus lands here the moment a check-in succeeds, and a section
-          // with no name is announced as nothing at all — leaving the bare
-          // number as the first thing a visitor hears.
+          // Named, or focus would land on a section announced as nothing.
           aria-label="Your ticket"
           className="mt-2 flex flex-col gap-1.5 rounded-xl border border-border border-l-[5px] border-l-accent bg-surface p-5"
         >
@@ -235,9 +217,7 @@ export default function UserPage() {
           <p className="m-0 text-[1.9rem] leading-[1.1] font-extrabold tabular-nums kiosk:text-[2.5rem]">
             #{mine.id}
           </p>
-          {/* A name is one long token as far as the browser is concerned, so
-              it has to be allowed to break mid-word or it drags the whole
-              page sideways. */}
+          {/* Let a long name break, or it widens the page. */}
           <p className="m-0 text-[1.35rem] font-bold [overflow-wrap:anywhere] kiosk:text-title">
             {myName || mine.name}
           </p>
@@ -252,12 +232,8 @@ export default function UserPage() {
               : "You’re checked in. You join the line at your appointment time."}
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-3">
-            {/* Only staff can take someone out of the line; this just clears
-                this device so the next person can join on it. Deliberately
-                unconfirmed: on a shared tablet the next visitor is standing
-                there waiting, and nothing here is destructive. It opens the
-                form itself rather than resting on the start screen, which
-                would ask the same question over again. */}
+            {/* Clears only this device for the next person; unconfirmed, as
+                nothing is lost. Opens the form directly. */}
             <button
               type="button"
               className="self-start bg-transparent p-0 text-accent underline"
@@ -296,9 +272,7 @@ export default function UserPage() {
         </section>
       ) : !showForm ? (
         <section className="mt-2 flex flex-col gap-2 rounded-xl border border-border bg-surface p-5">
-          {/* The kiosk speaks to whoever is standing at it, so this says
-            what they came to do. The ticket's own button is the one that
-            speaks about somebody else. */}
+          {/* Speaks to whoever is at the kiosk, about what they came to do. */}
           <button type="button" onClick={() => setShowForm(true)}>
             Check in
           </button>

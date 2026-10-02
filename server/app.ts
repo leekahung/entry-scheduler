@@ -16,15 +16,9 @@ import { type SheetsConfig, sheetUrl } from "./sheet/sheets.js";
 import type { Store } from "./sheet/store.js";
 
 /**
- * Builds the API. Pass `staticDir` in production to also serve the built
- * frontend from the same origin and port.
- * `allowRemoteAdmin` opens the console to addresses outside the local
- * network; leave it off unless something else is authenticating in front.
- *
- * The routes themselves live in `./routes`; what is assembled here is the
- * wiring they share — the limiters, the guards, and who a request is.
- * `linkToTab` makes the spreadsheet links; production passes `tabUrl`, and
- * the default links the file alone without asking Google anything.
+ * Builds the API, and serves the built frontend too when given `staticDir`.
+ * `allowRemoteAdmin` opens the console beyond the local network.
+ * `linkToTab` makes spreadsheet links; the default skips asking Google.
  */
 export function createApp(
   store: Store,
@@ -44,9 +38,7 @@ export function createApp(
   // Only the OAuth callback reads the query, and only flat strings; `qs`'s
   // nested parsing is surface on every public route and nothing uses it.
   app.set("query parser", "simple");
-  // Before everything it might compress. The board is polled every five
-  // seconds by every screen in the room, and its JSON is repetitive enough to
-  // go out at a sixteenth of the size; the bundle a kiosk loads is a third.
+  // First, so it covers everything: the polled board's JSON shrinks ~16x.
   app.use(compression());
   app.use(
     helmet({
@@ -64,9 +56,8 @@ export function createApp(
   );
   app.use(express.json());
 
-  // Per-app stores, so one instance's counters never bleed into another's.
-  // Successful requests are skipped: only failed auth accumulates, which
-  // leaves the admin console's 5-second polling untouched.
+  // Per-app stores. Only failed auth counts, so the console's polling never
+  // trips it.
   const adminLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 30,
@@ -88,10 +79,8 @@ export function createApp(
     },
   });
 
-  // One budget shared by every address, so a flood from many cannot starve the
-  // write queue staff edits wait in. Each check-in costs a Sheets read and a
-  // write against a ~60/min quota. Only a 400 is refunded: it never reached
-  // Sheets, while a 500 has usually spent several retries getting there.
+  // One budget for every address, so a flood cannot starve the write queue.
+  // Only a 400 is refunded: it never reached Sheets, unlike a 500.
   const joinCapLimiter = rateLimit({
     windowMs: 60 * 1000,
     limit: 30,
@@ -103,9 +92,8 @@ export function createApp(
     message: { error: "Sign-in is busy right now. Try again in a minute." },
   });
 
-  // The board is the cheapest thing to hammer and the easiest to scrape, but a
-  // waiting visitor polls it 12 times a minute and a roomful shares one address
-  // behind NAT. 1200 leaves room for ~100 of them and still stops a script.
+  // A roomful behind one NAT address polls 12/min each; 1200 fits ~100 of
+  // them and still stops a scraper.
   const queueLimiter = rateLimit({
     windowMs: 60 * 1000,
     limit: 1200,
@@ -139,16 +127,8 @@ export function createApp(
     recentFailures: guards.recentFailures,
   };
 
-  // Revalidate rather than guess. Every answer already carries an ETag, but
-  // without a directive the browser applies its own heuristic and asks for the
-  // board in full every five seconds; told to revalidate, it sends the tag it
-  // holds and an unchanged board comes back as a bodyless 304.
-  //
-  // `private` as well as `no-cache`: on its own, no-cache lets a shared cache
-  // *store* the answer so long as it revalidates before reuse, and these
-  // answers carry visitors' names, what they came in for, and the exports. The
-  // board is expected to run over plain HTTP on a venue LAN, which is exactly
-  // where something in the middle can keep a copy.
+  // `no-cache` makes the browser revalidate its ETag, so an unchanged board is
+  // a bodyless 304. `private` stops a shared cache on a venue LAN storing it.
   app.use("/api", (_req, res, next) => {
     res.setHeader("Cache-Control", "private, no-cache");
     next();
@@ -169,11 +149,8 @@ export function createApp(
     const root = path.resolve(staticDir);
     app.use(
       express.static(root, {
-        // Only what Vite fingerprints into assets/ may be held: those can
-        // never go stale, since a change ships under a new name. Everything
-        // else keeps its name across builds — index.html, and anything
-        // dropped into the build unhashed — so a year-long copy of one could
-        // not be replaced at all.
+        // Only fingerprinted assets/ may be cached for long; anything else
+        // keeps its name across builds, so a long-held copy could never update.
         setHeaders: (res, file) => {
           const fingerprinted = path
             .relative(root, file)

@@ -1,11 +1,8 @@
 import { crc32, deflateRawSync } from "node:zlib";
 
 /**
- * Writes an .xlsx workbook: a zip of a few XML parts, and nothing else.
- *
- * Every library that does this either ships a dependency tree far larger than
- * the job or is a fork of an abandoned one; text cells in a workbook need only
- * what is here.
+ * Writes an .xlsx workbook: a zip of a few XML parts.
+ * Hand-rolled because the libraries are heavy or abandoned.
  */
 
 /** A sheet as its tab name and its rows, header row included. */
@@ -19,13 +16,8 @@ const ESCAPES: Record<string, string> = {
 };
 
 /**
- * Characters XML 1.0 has no way to carry: the C0 controls other than tab,
- * newline and carriage return. There is no escape for these — a numeric
- * reference is just as illegal — so they come out.
- *
- * A cell can hold one after a paste into Google Sheets, and one of them
- * anywhere in the file makes the whole workbook unreadable rather than the one
- * cell: a parser rejects it as malformed XML and Excel offers to repair it.
+ * The C0 controls XML 1.0 cannot carry at all, not even escaped.
+ * Removed, since one pasted into a cell makes the whole workbook unreadable.
  */
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching them is the point
 const ILLEGAL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
@@ -49,9 +41,7 @@ function columnRef(index: number): string {
 
 /**
  * A sheet's rows as worksheet XML.
- *
- * Text goes in as an inline string, which Excel never evaluates — so a name
- * beginning "=" lands as itself, with no quoting to do.
+ * Text goes in as inline strings, which Excel never evaluates as formulas.
  */
 function sheetXml(rows: (string | number)[][]): string {
   const body = rows
@@ -76,11 +66,8 @@ function sheetXml(rows: (string | number)[][]): string {
 }
 
 /**
- * The parts as a zip archive.
- *
- * Deflated, with a real MS-DOS timestamp on every entry: left at zero they
- * date to "0000-00-00", which Windows Explorer's own zip handler refuses to
- * open.
+ * The parts as a deflated zip archive.
+ * Entries carry a real timestamp: Windows Explorer refuses to open zeros.
  */
 function zip(files: [string, string][]): Buffer {
   const now = new Date();
@@ -145,9 +132,8 @@ function zip(files: [string, string][]): Buffer {
   return Buffer.concat([...chunks, central, end]);
 }
 
-// One unstyled format and one that wraps. Excel reads a workbook without a
-// styles part, but it is the strictest reader of the format and there is no
-// reason to make it decide.
+// One plain format and one that wraps. Excel is the strictest reader, so a
+// styles part is included even though it is optional.
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts><fills count="1"><fill><patternFill patternType="none"/></fill></fills><borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf></cellXfs></styleSheet>`;
 
 /** A workbook with one tab per sheet, in the order given. */

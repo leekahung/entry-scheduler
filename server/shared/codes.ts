@@ -72,11 +72,8 @@ export type CaseType = (typeof CASE_TYPES)[number];
 export type Gender = (typeof GENDERS)[number];
 
 /**
- * Plain-English wording for each case type, with every acronym spelled out.
- *
- * Currently unused: the sign-in screen this was written for no longer asks
- * visitors to pick a case type — staff set it from the raw codes. Kept for
- * whenever a visitor-facing picker comes back.
+ * Plain-English wording for each case type, acronyms spelled out.
+ * Currently unused: kept for when a visitor-facing case type picker returns.
  */
 export const CASE_TYPE_LABEL: Record<CaseType, string> = {
   // Opaque on their own — plain term first, then the acronym spelled out.

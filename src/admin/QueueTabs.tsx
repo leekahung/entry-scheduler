@@ -51,9 +51,8 @@ export default function QueueTabs({ tabs, active, onSelect }: Props) {
             aria-selected={selected}
             aria-controls={panelId(tab.id)}
             tabIndex={selected ? 0 : -1}
-            // Tabs, not buttons: no fill, no box, just a rule under the one
-            // you are on. The base stylesheet makes every button a filled
-            // accent pill, so each of those has to be undone here.
+            // Tabs, not buttons: undo the base stylesheet's filled pill and
+            // underline the current one.
             className={`rounded-none border-0 border-b-[3px] bg-transparent px-3 py-2 ${
               selected
                 ? "border-b-accent text-accent"

@@ -82,9 +82,8 @@ describe("the workbook writer", () => {
   });
 
   it("drops the control characters XML cannot carry at all", () => {
-    // A vertical tab survives a paste into a Google Sheets cell and comes
-    // straight back out of the board. Left in, it is not one bad cell: the
-    // file is malformed XML and no reader will open any of it.
+    // A vertical tab survives a paste into Sheets, and left in it makes the
+    // whole file malformed XML.
     const vertical = String.fromCharCode(0x0b);
     const parts = unzip(
       toXlsx([{ name: "Sheet", rows: [[`Ada${vertical}Lovelace`]] }]),

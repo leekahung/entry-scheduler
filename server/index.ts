@@ -32,10 +32,8 @@ if (allowRemoteAdmin) {
   );
 }
 
-// Reachable from anywhere with no Google sign-in would leave one shared
-// passcode as the whole security of the console. Refusing to start is the
-// only way that cannot happen by accident: losing the OAuth settings must
-// break the deployment loudly, not quietly downgrade how staff are let in.
+// One shared passcode reachable from anywhere is too weak; refuse to start
+// rather than quietly downgrade when the OAuth settings go missing.
 if (allowRemoteAdmin && !auth) {
   console.error(
     "ALLOW_REMOTE_ADMIN is on but Google sign-in is not configured.\n" +
@@ -65,9 +63,8 @@ if (auth) {
     );
   }
 } else {
-  // The shared passcode is a development convenience, not a way to run a
-  // clinic: one credential, no identity behind it, and nothing to revoke per
-  // person. A deployment has to sign staff in with Google.
+  // The passcode is for development only: one credential, nothing to revoke
+  // per person.
   if (process.env.NODE_ENV === "production") {
     console.error(
       "Google sign-in is not configured, and the shared passcode is not accepted in production.\n" +
@@ -108,18 +105,13 @@ if (!sheets) {
   process.exit(1);
 }
 
-// Each month the board spans is kept in its own tab, and the live log stays
-// the first tab. A month ending on its own goes in directly after it, pushing
-// the older months further right. Several months filed at once — a first
-// archive of a board that spans a year — are written side by side, so they
-// land after the log in no particular order among themselves.
+// Each month gets its own tab after the live log, newest month leftmost.
 const store = createStore(googleTransport(sheets), {
   tabs: googleTabs(sheets),
 });
 
-// Who may use the console, kept in a spreadsheet of its own: anyone who can
-// edit a file can edit every tab in it, so a list inside the queue's would let
-// its editors make themselves owners. The app creates the tab on first write.
+// A spreadsheet of its own: editors of the queue's file could otherwise make
+// themselves owners. The app creates the tab on first write.
 const staffSheets = staffSheetsConfig(sheets);
 const staff = staffSheets
   ? createStaffStore(
@@ -150,10 +142,8 @@ if (auth) {
   }
 }
 
-// Building the Google auth client costs about 2.7 seconds and the first read
-// a round trip to Google. A starting instance has boosted CPU and no traffic,
-// which is where that belongs — not on the visitor who happens to be the first
-// through the door after a quiet spell.
+// Warm up the ~2.7s auth client and first read now, while the instance is idle,
+// not on the first visitor.
 store.list().catch((error) => {
   // Only a warm-up: the first real request will try again and report properly.
   console.warn("Could not read the queue at startup:", error);
@@ -165,9 +155,8 @@ const app = createApp(store, passcode, staticDir, allowRemoteAdmin, {
   linkToTab: (config) => tabUrl(config),
 });
 
-// Only behind a proxy that sets X-Forwarded-For itself, such as Cloud Run.
-// Off by default: with it on, anyone who can reach the port directly can forge
-// an on-network address and walk past the admin gate.
+// Only behind a proxy that sets X-Forwarded-For, such as Cloud Run; otherwise
+// anyone can forge an on-network address.
 const trustProxy = Number(process.env.TRUST_PROXY ?? 0);
 if (trustProxy > 0) {
   app.set("trust proxy", trustProxy);
@@ -186,10 +175,8 @@ const server = app.listen(port, () => {
   );
 });
 
-// Cloud Run sends SIGTERM and kills the instance a few seconds later, and a
-// write cut in half would leave the spreadsheet — the only copy of the queue —
-// short of what it should hold. Stop taking new requests, let the ones already
-// running finish, and never outstay the grace period.
+// Cloud Run kills the instance soon after SIGTERM, and a half-done write would
+// lose queue rows: finish in-flight requests within the grace period.
 const SHUTDOWN_GRACE_MS = 5000;
 let stopping = false;
 

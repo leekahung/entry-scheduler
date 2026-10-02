@@ -13,9 +13,8 @@ describe("opening an entry for editing", () => {
     expect(result.current.editing?.draft.helpedBy).toBe("Kim");
   });
 
-  // The editor sends only what differs from `initial`. Seeding the helper
-  // into both made it compare equal to itself, so the name staff could see in
-  // the field was silently dropped from the save.
+  // Seeding the helper into both copies made it equal itself, so the save
+  // dropped the name shown in the field.
   it("keeps the helper out of the copy the save is compared against", () => {
     const { result } = renderHook(() => useEntryEditor());
     act(() => result.current.toggle(makeAdminEntry(), "Kim"));

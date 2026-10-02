@@ -55,15 +55,13 @@ export function staffRoutes({
         // Named separately so the console can show they are not removable
         // here rather than offering a button that cannot work.
         bootstrapOwners: [...(auth?.allowed ?? [])],
-        // A row for an address the environment already owns grants nothing —
-        // `identify` answers "owner" before it reads the tab — so listing it
-        // among the members would show that address twice.
+        // An address the environment already owns gains nothing from a row, so
+        // listing it would show it twice...
         members: rows.filter(
           (member) => !auth || !isBootstrapOwner(auth, member.email),
         ),
-        // ...but it must not become invisible either: dropped from the
-        // environment later, a forgotten row would quietly grant access again.
-        // Named here so the console can offer to clear it out.
+        // ...but a forgotten row would grant access again once dropped from the
+        // environment, so name it for clearing out.
         redundantRows: auth
           ? rows
               .filter((member) => isBootstrapOwner(auth, member.email))
@@ -99,10 +97,8 @@ export function staffRoutes({
       }
 
       const who = await identify(req);
-      // Re-adding an address rewrites its row, so this is the other way to
-      // reach the mistake the remove path already refuses: an owner who makes
-      // themselves staff loses the panel that would put it back, and where
-      // they are the only owner nobody else can either.
+      // An owner demoting themselves loses the panel to undo it, and nobody
+      // else can if they are the only owner.
       if (who && email === who.email && role === "staff") {
         res.status(400).json({
           error: "You cannot change your own access to staff.",
@@ -124,9 +120,8 @@ export function staffRoutes({
       const who = await identify(req);
       const auth = authConfig();
 
-      // Checked before the two guards below: clearing a leftover row takes
-      // nobody's access away, because the environment still grants it. That
-      // makes it safe even when the address is the caller's own.
+      // Before the guards below: clearing a leftover row removes nobody's
+      // access, so it is safe even for the caller's own address.
       if (auth && isBootstrapOwner(auth, email)) {
         if (await staff?.remove(email)) {
           res.status(204).end();

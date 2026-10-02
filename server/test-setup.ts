@@ -1,8 +1,5 @@
-// The server reads its configuration from the environment, so a developer who
-// has a real .env loaded in their shell would otherwise run the suite against
-// their own spreadsheet and sign-in settings — and watch the passcode tests
-// fail because Google sign-in silently took over. Tests that want a setting
-// set it themselves.
+// Cleared so a developer's loaded .env cannot point the suite at a real
+// spreadsheet or sign-in; tests that want a setting set it themselves.
 const CONFIGURED_BY_TESTS = [
   "GOOGLE_SHEETS_ID",
   "GOOGLE_SHEETS_TAB",

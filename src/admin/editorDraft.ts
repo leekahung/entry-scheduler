@@ -22,7 +22,6 @@ export type EditorDraft = {
   scheduledFor: string;
 };
 
-/** Seeds a draft from an entry. Lives here so the shape stays with the form. */
 /**
  * The editor's starting values for one entry.
  * `helper` is whoever the console is helping as, which stands in for an entry

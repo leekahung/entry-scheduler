@@ -69,9 +69,8 @@ describe("what the editor sends on save", () => {
     expect(onSave).toHaveBeenCalledWith({ phone: "503-555-1234" });
   });
 
-  // The bug this file was written for: the helper was seeded into both the
-  // draft and the comparison copy, so it compared equal to itself and the
-  // name staff could see in the field was dropped from the request.
+  // The original bug: the helper seeded both copies, compared equal to itself
+  // and was dropped from the save.
   it("sends the prefilled helper even though nobody typed in the field", async () => {
     const onSave = save();
     render(<Editor entry={filledIn()} helper="Kim" onSave={onSave} />);
@@ -138,9 +137,7 @@ describe("what the editor sends on save", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  // An emptied box must reach the server as 0, not as NaN or a dropped field.
-  // `Number("")` is already 0, so the `|| 0` beside it is belt-and-braces for
-  // a value no number input will hand over; this pins the outcome, not that.
+  // An emptied box must reach the server as 0, not NaN or a dropped field.
   it("sends an emptied time box as 0", async () => {
     const onSave = save();
     render(<Editor entry={filledIn({ timeSpent: 2 })} onSave={onSave} />);

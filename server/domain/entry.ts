@@ -77,16 +77,9 @@ export function isDue(entry: Entry, now: number): boolean {
 }
 
 /**
- * Queue order — whoever has been due longest, so a 2pm booking falls in behind
- * the morning walk-ins and ahead of anyone arriving after 2pm.
- *
- * An appointment still hours out waits at the back whatever its visit type, or
- * the board would announce someone who has not walked through the door yet as
- * next up.
- *
- * Visit type only separates two entries due at the same moment, where it puts
- * remote first. Ranking above the due time instead would hold a walk-in behind
- * every remote entry, including ones raised after they arrived.
+ * Queue order: longest due first, so a 2pm booking falls in after the morning
+ * walk-ins. Appointments not yet due wait at the back.
+ * Visit type only breaks ties, putting remote first.
  */
 export function queueOrder(now = Date.now()) {
   return (a: Entry, b: Entry): number => {

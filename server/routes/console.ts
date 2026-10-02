@@ -23,9 +23,7 @@ export function consoleRoutes({
     requireAdmin,
     wrap(async (req, res) => {
       const config = sheetsConfig();
-      // The same line /api/auth/me draws: the spreadsheet holds every month,
-      // so its link is an owner's. Withholding it on one route and handing it
-      // out on this one would leave the console's hidden button a formality.
+      // Owners only, as on /api/auth/me, or the hidden button is a formality.
       const mayLink = !authConfig() || (await identify(req))?.role === "owner";
       // Null when Sheets is unconfigured, which is what makes the console fall
       // back to offering the current-list download instead of a link.
@@ -36,10 +34,8 @@ export function consoleRoutes({
     }),
   );
 
-  // Lets whoever is signed in notice someone trying to get in.
-  // Owners only: the warning asks someone to review who has access, or to
-  // rotate the passcode where there still is one, and neither is a staff
-  // member's to do.
+  // Warns of someone trying to get in. Owners only: reviewing access or
+  // rotating the passcode is theirs to do.
   routes.get(
     "/alerts",
     adminLimiter,

@@ -4,11 +4,8 @@ import { useState } from "react";
 export const PAGE_SIZE = 10;
 
 /**
- * A list read a page at a time, by page number.
- *
- * The page is clamped rather than stored blindly: the rows underneath refresh
- * on every poll, so the page somebody is on can stop existing while they are
- * reading it, and falling back to the last page beats rendering nothing.
+ * A list read a page at a time.
+ * The page is clamped, since polling can remove the page someone is on.
  */
 export function usePaging<T>(rows: T[]) {
   const [asked, setAsked] = useState(1);

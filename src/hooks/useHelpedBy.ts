@@ -7,10 +7,8 @@ import { MAX_NAME } from "../../server/shared/limits";
  * there is no identity behind a shared credential.
  */
 export function useHelpedBy(name: string) {
-  // Clamped, because the server holds this name to the same length as any
-  // other. Deliberately not falling back to the address: signing every entry
-  // "kim@clinic.org" reads worse than asking, and the fallback would also hide
-  // the box the name could be typed into.
+  // Clamped to the server's limit. No fallback to the address: signing work as
+  // an email reads worse, and would hide the box to type a name.
   const signedInAs = (name || "").slice(0, MAX_NAME);
   const [typedAs, setTyped] = useState(
     () => localStorage.getItem("helpedBy") ?? "",

@@ -67,11 +67,9 @@ export function createGuards({
   };
 
   /**
-   * Whether this request came from the network staff actually sit on.
-   *
-   * A forwarded header the app was not told to trust is disqualifying: behind
-   * an unconfigured proxy `req.ip` is the proxy's own address, which is
-   * private, so every caller on the internet would otherwise look on-site.
+   * Whether this request came from the staff's local network.
+   * An untrusted forwarded header disqualifies: behind an unconfigured proxy,
+   * every caller would otherwise look on-site.
    */
   const isOnSite = (req: Req) => {
     if (allowRemoteAdmin) return true;
@@ -89,9 +87,7 @@ export function createGuards({
       return;
     }
 
-    // Google sign-in replaces the shared passcode wherever it is configured;
-    // without it the console falls back to the passcode rather than locking
-    // every local deployment out.
+    // Google sign-in replaces the passcode wherever it is configured.
     if (authConfig()) {
       identify(req)
         .then((who) => {
@@ -106,9 +102,8 @@ export function createGuards({
       return;
     }
 
-    // Never in production. `index.ts` refuses to start in that state, so this
-    // is the second lock on the same door: however the process got here, a
-    // deployed console cannot fall back to one shared secret.
+    // A second lock behind `index.ts`: production never falls back to one
+    // shared secret.
     if (process.env.NODE_ENV === "production") {
       failureLog.note();
       res.status(501).json({
@@ -128,10 +123,8 @@ export function createGuards({
   };
 
   /**
-   * Guards the staff list. Deliberately unavailable on a passcode-only
-   * deployment: everyone there shares one credential, so there is no "certain
-   * staff" to trust with it, and exposing it would let any console user grant
-   * themselves permanent access.
+   * Guards the staff list. Unavailable with the shared passcode, where any
+   * console user could grant themselves permanent access.
    */
   const requireOwner: RequestHandler = (req, res, next) => {
     // The same network rule as the rest of the console; managing access must
@@ -167,11 +160,9 @@ export function createGuards({
   };
 
   /**
-   * Guards what belongs to running the clinic rather than to working the
-   * queue. Where staff sign in with Google there are owners to hold it; on a
-   * passcode deployment everyone shares one credential, so there is no line to
-   * draw and any admin passes. Runs behind `requireAdmin`, which has already
-   * settled the network and the session.
+   * Guards running the clinic rather than working the queue: owners with
+   * Google sign-in, any admin with the shared passcode.
+   * Runs behind `requireAdmin`.
    */
   const requireOwnerOfRecords: RequestHandler = (req, res, next) => {
     if (!authConfig()) {

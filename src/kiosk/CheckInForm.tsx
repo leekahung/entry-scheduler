@@ -45,9 +45,8 @@ export default function CheckInForm({ onSubmit, onCancel, submitting }: Props) {
         autoFocus
         aria-describedby="name-count"
       />
-      {/* Counters carry no aria-live: a per-keystroke countdown is pure noise
-          for a screen reader, and aria-describedby already links them to
-          their field. */}
+      {/* No aria-live: a per-keystroke countdown is noise, and
+          aria-describedby already links it to the field. */}
       {name.length >= NAME_COUNTER_FROM && (
         <p
           id="name-count"
@@ -88,9 +87,7 @@ export default function CheckInForm({ onSubmit, onCancel, submitting }: Props) {
         >
           {submitting ? "Checking in…" : "Check in"}
         </button>
-        {/* On a shared tablet someone who changes their mind should not have
-            to leave their half-typed details on screen. Always offered, so it
-            sits in the same place every time. */}
+        {/* Always offered: a shared tablet keeps no half-typed details. */}
         <button
           type="button"
           className="border-border bg-surface text-text"

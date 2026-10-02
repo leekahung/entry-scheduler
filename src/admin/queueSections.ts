@@ -11,9 +11,8 @@ export type QueueSection = {
 
 /**
  * The queue split into its tabs, in tab order.
- * Rows come from the filtered view, so a filter tells staff where its matches
- * are rather than emptying the tab they are looking at — which is also why
- * each empty message says whether a filter is the reason.
+ * Filtered rows, so each tab shows where the matches are and its empty
+ * message says whether a filter is why.
  */
 export function queueSections(
   visible: AdminEntry[],

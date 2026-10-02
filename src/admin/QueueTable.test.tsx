@@ -55,9 +55,8 @@ describe("which row is open for editing", () => {
     expect(expanded[0].textContent).toBe("Close");
   });
 
-  // A removed row has no Edit button to close the editor with, and none of the
-  // queue's actions apply to it. Reachable when somebody else removes the row
-  // that is open here.
+  // Reachable when someone else removes the row open here; a removed row has
+  // no Edit button to close it with.
   it("shows no editor on a row that has been removed", () => {
     const gone = makeAdminEntry({
       id: ADA.id,

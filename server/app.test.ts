@@ -24,10 +24,8 @@ const asAdmin = (req: request.Test) => req.set("x-admin-passcode", PASSCODE);
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
-// One listener for the whole file, delegating to whichever app the current
-// test built. `request(app)` would open an ephemeral port per call, and even
-// binding one per test churned enough of them that a request occasionally
-// landed on a reused port and came back as someone else's answer.
+// One listener per file, delegating to the current test's app: a port per
+// request or per test churned until replies reached the wrong test.
 const server = createServer((req, res) => app(req, res));
 
 const emptyStore = () => createStore(fakeSheet().transport);
@@ -245,9 +243,8 @@ describe("hardening", () => {
         ).status,
       );
     }
-    // Counted, not pinned to the 101st response: on a machine busy with other
-    // work a reply can arrive from somewhere else entirely, and pinning the
-    // index made this test fail roughly one run in twenty.
+    // Counted, not pinned to the 101st response, which failed about one run
+    // in twenty on a busy machine.
     expect(statuses).toContain(429);
     expect(
       statuses.filter((status) => status === 201).length,
@@ -356,9 +353,8 @@ describe("hardening", () => {
 });
 
 describe("behind an unconfigured proxy", () => {
-  // Cloud Run and most reverse proxies hand the container a private address as
-  // the peer, so without `trust proxy` every caller would look on-site.
-  // The shared app, which is never told to trust a proxy.
+  // Behind a proxy every peer is private, so without `trust proxy` all callers
+  // would look on-site. This app never trusts a proxy.
   const fromInternet = (path: string) =>
     request(server)
       .get(path)
@@ -521,9 +517,8 @@ describe("network scoping", () => {
     );
   });
 
-  // Enforcement itself is covered by the sign-in flood in "hardening", which
-  // shares this limiter. Exhausting a 1200-request budget here only made the
-  // test slow enough to drop a request and fail on a loaded machine.
+  // Enforcement is covered by the sign-in flood in "hardening"; exhausting
+  // 1200 requests here made the test flaky.
   it("budgets the board for a roomful, not for one device", async () => {
     const res = await request(server).get("/api/queue");
     expect(Number(res.headers["ratelimit-limit"])).toBe(1200);
@@ -546,9 +541,8 @@ describe("network scoping", () => {
 });
 
 describe("off-network admin access", () => {
-  // trust proxy makes req.ip follow X-Forwarded-For, which is the only way to
-  // present as a public address from loopback. It is also exactly the spoof
-  // this guard would be exposed to if a real deployment enabled it carelessly.
+  // trust proxy lets X-Forwarded-For present a public address from loopback —
+  // the very spoof a careless deployment would expose.
   const fromPublicIp = (app: ReturnType<typeof createApp>, path: string) => {
     app.set("trust proxy", 1);
     return request(app)

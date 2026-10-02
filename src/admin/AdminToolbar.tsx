@@ -72,11 +72,8 @@ export default function AdminToolbar({
               Open spreadsheet
             </a>
           )}
-          {/* Up here so a record can be taken without opening Google Sheets —
-            and the only way to get one when Sheets is not configured. Both
-            are Excel, so neither says so: the difference that matters is
-            whether the months already filed away are in it, and naming the
-            shared format only cost the room to stay beside the title. */}
+          {/* A record without opening Sheets, and the only one when Sheets is
+            not set up. Neither says "Excel": what differs is the months. */}
           <button
             type="button"
             className="btn-secondary inline-flex items-center gap-2"
@@ -85,9 +82,7 @@ export default function AdminToolbar({
             <DownloadIcon />
             Download current list
           </button>
-          {/* The record to keep, rather than the list to paste: every month
-            the spreadsheet holds, each in its own tab. Owners only, and the
-            server enforces it — this holds far more than the board does. */}
+          {/* Every filed month, a tab each. Owners only (server-enforced). */}
           {owner && (
             <button
               type="button"

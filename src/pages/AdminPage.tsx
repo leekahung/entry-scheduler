@@ -31,9 +31,8 @@ import Pagination from "../shared/Pagination";
 export default function AdminPage() {
   const session = useAdminSession();
   const { passcode, unlocked, sheetUrl } = session;
-  // Everything the clinic keeps — its records and who may reach them — is an
-  // owner's. A passcode deployment has one shared credential and so no owners
-  // to tell apart, and nothing is held back there.
+  // Records and access are an owner's; with the shared passcode there are no
+  // owners to tell apart, so nothing is held back.
   const owner = session.role === "owner" || session.mode === "passcode";
   // Stricter than `owner`: managing access needs Google sign-in to have
   // someone to name, and the server refuses it outright without one.
@@ -63,9 +62,8 @@ export default function AdminPage() {
   const signOutRef = useRef(handleSignOut);
   signOutRef.current = handleSignOut;
 
-  // The server has stopped accepting this session; drop it rather than poll on.
-  // Anything else it rejects (a 429 from the admin rate limit) also stops the
-  // poll, but is recoverable, so that surfaces as a banner instead.
+  // A 401 ends the session. A 429 also stops the poll but is recoverable, so
+  // it shows as a banner instead.
   useEffect(() => {
     if (queue.rejected?.status === 401) {
       signOutRef.current(queue.rejected.message);
@@ -116,10 +114,8 @@ export default function AdminPage() {
     filters.filtering,
   );
   const found = sections.find((tab) => tab.id === section) ?? sections[0];
-  // The tab count stays the whole tab; only the table is handed out a page at
-  // a time, so nobody has to read past a screenful to find one row. Declared
-  // above the sign-in gate below: a hook behind an early return would change
-  // how many this component calls the moment someone signs in.
+  // Only the table pages; the tab count stays whole. Above the sign-in gate,
+  // since a hook after an early return breaks the hook order.
   const page = usePaging(found.rows);
   const shown = { ...found, rows: page.rows };
 
@@ -127,10 +123,8 @@ export default function AdminPage() {
 
   const { entries, alerts, offline, loaded } = queue;
 
-  // Counted off the full queue, not the filtered view: this line is the state
-  // of the room, and a filter should never make people appear to leave it.
-  // Everything that counts the room counts the board, and a removed entry is
-  // not on it. The Removed tab is the only place they appear.
+  // The whole board, unfiltered and without removed entries: a filter must
+  // never look like people leaving the room.
   const onBoard = entries.filter((e) => !e.deletedAt);
   const allInRoom = onBoard.filter((e) => e.status !== "resolved" && e.due);
   const beingHelped = allInRoom.filter((e) => e.status === "pending").length;
@@ -229,9 +223,8 @@ export default function AdminPage() {
       {/* The sync sits beside the sections rather than in the header: it is
         about the record these tables are kept in, not about the console. */}
       <div className="flex flex-wrap items-end justify-between gap-2 border-border border-b">
-        {/* The sync follows the last tab rather than sitting at the other end
-          of the strip: it is about the record these tabs are kept in, and a
-          circular arrow beside the page steps would read as one of them. */}
+        {/* After the last tab, not by the page steps, where it would read as
+          one of them. */}
         <div className="flex flex-wrap items-end gap-2">
           <QueueTabs
             tabs={sections.map(({ id, label, rows }) => ({
@@ -247,10 +240,8 @@ export default function AdminPage() {
             }}
           />
           {owner && (
-            // None of a button's furniture, so it does not read as a fifth
-            // tab — but it says what it does: an icon on its own next to five
-            // labelled tabs is a guess. Held to one width so the label
-            // changing to "Syncing…" does not resize it mid-press.
+            // Unboxed so it is not a fifth tab, but labelled, since an icon
+            // alone is a guess; fixed width so "Syncing…" does not resize it.
             <button
               type="button"
               className="mb-2 inline-flex min-w-[8.5rem] items-center gap-2 border-0 bg-transparent p-0 pointer-fine:min-h-[1.9rem] text-meta font-semibold text-muted hover:text-text disabled:opacity-40"

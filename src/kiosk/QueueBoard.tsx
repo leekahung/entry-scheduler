@@ -6,15 +6,12 @@ const YOU = "text-fine font-bold tracking-label-wide text-muted uppercase";
 const PANEL_LABEL =
   "m-0 text-meta font-bold tracking-label-wide text-muted uppercase";
 
-// Bare numerals: colour alone carries the distinction, so nothing is drawn
-// around or under them. Both panels are read from the same distance, so both
-// are set at the same size.
+// Bare numerals, distinguished by colour alone, at one size for both panels.
 const NUMERAL =
   "font-extrabold tabular-nums leading-[1.05] text-[3.4rem] kiosk:text-[4.25rem]";
 const NUMERAL_NEXT = `${NUMERAL} text-accent`;
-// Alternating hues so two numbers side by side never read as one. Both differ
-// from the accent the "up next" numeral uses, so however many are being helped
-// the two panels never meet in the same colour.
+// Alternating hues so adjacent numbers never merge, both distinct from the
+// "up next" accent.
 const HELPED_HUES = ["text-pending-alt", "text-pending"];
 
 type Props = {

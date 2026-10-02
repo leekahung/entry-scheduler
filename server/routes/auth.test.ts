@@ -21,10 +21,8 @@ import { asAdmin, emptyStore, PASSCODE } from "./routes.fixture.js";
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
-// One listener for the whole file, delegating to whichever app the current
-// test built. `request(app)` would open an ephemeral port per call, and even
-// binding one per test churned enough of them that a request occasionally
-// landed on a reused port and came back as someone else's answer.
+// One listener per file, delegating to the current test's app: a port per
+// request or per test churned until replies reached the wrong test.
 const server = createServer((req, res) => app(req, res));
 
 beforeEach(() => {

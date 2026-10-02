@@ -5,19 +5,15 @@ import { afterEach } from "vitest";
 // would still be found by the next test's queries.
 afterEach(cleanup);
 
-// Components read these on mount — the name the console is helping as, and the
-// passcode that keeps a session unlocked — and jsdom shares both across the
-// tests in a file. Left behind, the next test starts already signed in.
+// jsdom keeps these across a file's tests; left behind, the next test starts
+// signed in.
 afterEach(() => {
   localStorage.clear();
   sessionStorage.clear();
 });
 
-// jsdom parses <dialog> but implements none of its behaviour, so the
-// confirmation dialogs would throw the moment they opened. Enough of it to
-// drive them: `open` reflects the state, and close() fires the event the
-// dialogs treat as a cancel. The focus trap and Esc are the browser's own and
-// are not modelled here.
+// jsdom parses <dialog> but implements none of it: enough for the dialogs to
+// open and cancel. Focus trap and Esc are not modelled.
 if (!HTMLDialogElement.prototype.showModal) {
   HTMLDialogElement.prototype.showModal = function showModal() {
     this.open = true;

@@ -40,9 +40,7 @@ export default function QueueFilters({
       <label className="sr-only" htmlFor="visit-type-filter">
         Visit type
       </label>
-      {/* A fixed width, not one that follows the selected option: the row is a
-        flex line, so a select that grew from "Remote" to "Any visit type"
-        moved the search field and the checkbox beside it every time. */}
+      {/* Fixed width, so changing the option does not shift the row. */}
       <select
         id="visit-type-filter"
         className="w-[12rem] max-w-full flex-none"
@@ -56,11 +54,8 @@ export default function QueueFilters({
           </option>
         ))}
       </select>
-      {/* Its own line, and always there: a row that came and went with the
-        filters shortened the search field beside it and moved everything below
-        the card every time someone picked a visit type. The button keeps its
-        space when there is nothing to clear — `invisible` leaves it out of the
-        tab order and the accessibility tree, but not out of the layout. */}
+      {/* Always on its own line so the layout never shifts; `invisible` keeps
+        the space while hiding the button from tab order and screen readers. */}
       <p className="m-0 flex flex-[1_1_100%] flex-wrap items-center gap-3 text-meta text-muted">
         <span role="status">
           {shown} of {total} shown

@@ -1,14 +1,9 @@
 import { useState } from "react";
 
 /**
- * Runs one request at a time and reports how it went.
- * `pending` is what disables the buttons that started it; `error` carries the
- * server's own message where there is one, since it usually names the problem
- * better than anything this side could guess.
- *
- * `setError` is here because a form has its own reasons to complain — a
- * malformed address, a duplicate — that never reach the server, and they
- * belong in the same place as the failures that do.
+ * Runs one request at a time; `pending` disables its buttons and `error`
+ * prefers the server's own message.
+ * `setError` lets a form report its own checks in the same place.
  */
 export function useAsyncAction(fallback: string) {
   const [pending, setPending] = useState(false);

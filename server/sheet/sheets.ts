@@ -44,11 +44,8 @@ export function sheetsConfig(env = process.env): SheetsConfig | null {
 type TokenSource = { getAccessToken(): Promise<{ token?: string | null }> };
 
 /**
- * One auth client per identity, kept for the life of the process.
- *
- * Building a fresh one per request cost about 2.7 seconds every time; the
- * client caches the token internally and refreshes it when it expires, so
- * reusing it makes all but the first call free.
+ * One auth client per identity for the life of the process.
+ * Building one costs ~2.7s, and it caches and refreshes its own token.
  */
 const clients = new Map<string, Promise<TokenSource>>();
 
@@ -105,9 +102,8 @@ async function call(
   path: string,
   init: { method: string; body?: unknown },
 ): Promise<Response> {
-  // The spreadsheet is the only copy of the queue, so a rate limit or a
-  // dropped connection must not become a visitor who could not check in.
-  // Every request here is safe to repeat: a read, or a write of the whole tab.
+  // Retried, since a rate limit must not turn away a visitor; every request
+  // here is a read or a whole-tab write, so safe to repeat.
   for (let attempt = 0; ; attempt++) {
     const retriable = attempt < RETRIES;
     let res: Response;
@@ -165,19 +161,16 @@ function backOff(attempt: number): Promise<unknown> {
 
 /**
  * Reads and writes the whole log tab over the Sheets API.
- *
- * One request per write, never clear-then-write: a clear that lands while the
- * write does not would leave the queue's only storage empty. A shorter log is
- * blanked by padding the payload out to the tab's previous extent instead.
+ * Never clear-then-write, which could leave the queue empty; a shorter log is
+ * blanked by padding to the tab's previous extent.
  */
 export function googleTransport(
   config: SheetsConfig,
   // Injectable so the request shape can be tested without Google issuing a
   // real token.
   getToken: (config: SheetsConfig) => Promise<string> = accessToken,
-  // Only for tabs the app owns and may create, such as the staff list. Never
-  // for the log: a typo in the tab name must fail loudly rather than quietly
-  // create an empty tab and read the queue as empty.
+  // Only for tabs the app owns, such as the staff list. Never the log: a typo
+  // must fail loudly, not read an empty new tab as an empty queue.
   { createMissing = false }: { createMissing?: boolean } = {},
 ): SheetTransport {
   // A1 notation needs the sheet name single-quoted, or a tab called
@@ -283,11 +276,8 @@ export async function listTabs(
 }
 
 /**
- * How many tabs go into one batched call.
- *
- * Google counts a batch as a single request however many ranges it carries,
- * so this is not about quota: it is about the size of one response, which
- * holds every row of every tab in it.
+ * Tabs per batched call. Google counts a batch as one request, so this only
+ * caps the size of a single response.
  */
 const BATCH = 24;
 
@@ -304,12 +294,8 @@ const tabOf = (range: string) =>
   (range.split("!")[0] ?? "").replace(/^'|'$/g, "").replace(/''/g, "'");
 
 /**
- * Reads and writes whole tabs, several at a time.
- *
- * A month tab per request is what makes filing a year expensive — a read, a
- * write and a create each, tens of calls against a per-minute quota the
- * waiting room's polling is already spending. Every one of these collapses
- * into a single batched call, which Google counts as one request.
+ * Reads and writes whole tabs in batches, which Google counts as one request
+ * each — rather than tens of calls against the per-minute quota.
  */
 export type TabStore = {
   /** Every tab the spreadsheet holds. */
@@ -333,9 +319,8 @@ export function googleTabs(
   // has to blank the difference, or the tail of what was there is left behind.
   const extent = new Map<string, number>();
 
-  // A month tab does not only grow: `fromSheetValues` drops any row without a
-  // readable id, so a merge can come back shorter than the tab it was read
-  // from and leave the old tail standing as a duplicate.
+  // A merge can come back shorter than the tab (rows without an id drop), so
+  // blank the old tail rather than leave duplicates.
   const padded = (tab: string, values: (string | number)[][]) => {
     const held = extent.get(tab) ?? 0;
     extent.set(tab, values.length);
@@ -387,9 +372,7 @@ export function googleTabs(
       if (writes.length === 0) return;
       const token = await getToken(config);
 
-      // Every tab that has never been seen, created in one call rather than
-      // one apiece. They go in at index 1, which keeps the live log first and
-      // pushes the older months to the right.
+      // Create every unseen tab in one call, at index 1 so the log stays first.
       const missing = writes
         .map(({ tab }) => tab)
         .filter((tab) => !known.has(tab));
@@ -403,15 +386,12 @@ export function googleTabs(
               })),
             },
           });
-          // Only once the call landed. A batch fails as a whole, so a refusal
-          // says nothing about which of these now exist — and remembering them
-          // as created would skip the attempt every time after, leaving the
-          // write that follows to fail on a tab nothing ever made.
+          // Only once the call lands: a batch fails whole, so a refusal says
+          // nothing about which tabs now exist.
           for (const tab of missing) known.add(tab);
         } catch (error) {
-          // "Already exists" means the spreadsheet is ahead of what this
-          // process knows, which the write below copes with; anything else is
-          // a real failure. Either way nothing is remembered as created.
+          // "Already exists" is fine (the write copes); anything else throws.
+          // Either way nothing is remembered as created.
           const message = error instanceof Error ? error.message : "";
           if (!message.includes("already exists")) throw error;
         }

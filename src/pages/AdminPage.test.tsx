@@ -32,9 +32,8 @@ const ROWS = Array.from({ length: 34 }, (_, index) =>
 beforeEach(() => vi.mocked(api.fetchAllEntries).mockResolvedValue(ROWS));
 
 describe("crossing the sign-in gate", () => {
-  // The console renders behind an early return, so anything hook-shaped has to
-  // sit above it: one declared below changes how many hooks this component
-  // calls the moment somebody signs in, and React refuses the render.
+  // Hooks must sit above the early return, or signing in changes the hook
+  // count and React refuses the render.
   it("reaches the queue without changing its hook count", async () => {
     render(<AdminPage />);
     await userEvent.type(await screen.findByLabelText("Passcode"), "pass");

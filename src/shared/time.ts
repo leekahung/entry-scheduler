@@ -69,10 +69,8 @@ export function todayLocal(): string {
 }
 
 /**
- * The earliest month still on the board that is not the current one, as a
- * "March 2026" label, or "" when everything is from this month.
- * Local months, not UTC: an entry taken late on the 31st belongs to the month
- * the clinic was open, not the one UTC had already rolled into.
+ * The earliest earlier month on the board as "March 2026", or "".
+ * Local months, so a late check-in on the 31st stays in its own month.
  */
 export function unclosedMonth(createdAts: string[]): string {
   const now = new Date();

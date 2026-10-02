@@ -18,18 +18,15 @@ import type { EntryChanges } from "../hooks/useEntries";
 // Past this a walk-in has been sitting long enough that staff should see it.
 const LONG_WAIT_MINUTES = 30;
 
-// Under card-mode the header row is gone, so each cell grows its own label
-// from data-label.
-// Shape and spacing, without saying how the cell lays its contents out.
+// Shape and spacing only. In card mode each cell labels itself from
+// data-label, since the header row is gone.
 const CELL_BASE =
   "px-3 py-3 text-left align-middle [overflow-wrap:anywhere] border-b border-row-line card-mode:border-0 card-mode:px-0 card-mode:py-0.5";
 
 // As a card, most cells put their label and value on one line.
 const CELL = `${CELL_BASE} card-mode:flex card-mode:items-baseline card-mode:gap-2`;
 
-// The name is the card's heading, and its notes belong under it rather than
-// beside it: sharing the row, a two-word name is squeezed into a column narrow
-// enough to break it across lines.
+// The name heads the card with its notes beneath, rather than squeezed beside.
 const NAME_CELL = `${CELL_BASE} card-mode:block`;
 
 const LABELLED_CELL = `${CELL} card-mode:before:block card-mode:before:flex-[0_0_5.5rem] card-mode:before:text-fine card-mode:before:font-bold card-mode:before:tracking-label card-mode:before:text-muted card-mode:before:uppercase card-mode:before:content-[attr(data-label)]`;
@@ -42,14 +39,8 @@ const HEAD_CELL =
 const ACTION =
   "px-2.5 py-1.5 text-meta pointer-fine:min-h-8 pointer-fine:px-2 pointer-fine:py-1 card-mode:min-w-[6rem] card-mode:flex-[1_1_auto] card-mode:px-3 card-mode:py-2.5 card-mode:text-[0.95rem]";
 
-// Card mode turns every row into a card; the editor row gets the same shell
-// so it reads as part of the entry it belongs to.
-//
-// The card is a grid, not a stack: one field per line left most of a card's
-// width empty beside short values like a code or a select. `auto-fit` takes
-// as many columns as the card can hold, so a phone still gets one and a
-// tablet two or three. The `min()` keeps the track from ever being wider than
-// the card itself, which would push the content sideways on a narrow screen.
+// Card mode makes each row a card, the editor row included. A grid, so short
+// values share lines; `min()` keeps tracks no wider than a narrow screen.
 const ROW =
   "card-mode:mb-3 card-mode:grid card-mode:grid-cols-[repeat(auto-fit,minmax(min(100%,17rem),1fr))] card-mode:items-start card-mode:gap-x-5 card-mode:rounded-xl card-mode:border card-mode:border-border card-mode:bg-surface card-mode:px-4 card-mode:py-3.5";
 
@@ -106,9 +97,7 @@ export default function QueueTable({
       <caption className="sr-only">{caption}</caption>
       <thead className="card-mode:hidden">
         <tr>
-          {/* Every column is pinned, so the spare width is shared out in
-            proportion and Name and Helped by stay the same size as each
-            other at any table width. */}
+          {/* Every column pinned, so Name and Helped by stay equal widths. */}
           <th scope="col" className={`${HEAD_CELL} w-[5rem]`}>
             #
           </th>
@@ -128,9 +117,7 @@ export default function QueueTable({
           <th scope="col" className={`${HEAD_CELL} w-[12rem]`}>
             Helped by
           </th>
-          {/* The status select and the two buttons on one line. The select is
-            held to the width of "Being helped" so the buttons after it line up
-            row to row; the other two states need less and get it anyway. */}
+          {/* Held to "Being helped" so the buttons line up row to row. */}
           <th scope="col" className={`${HEAD_CELL} w-[20rem]`}>
             Actions
           </th>
@@ -147,9 +134,7 @@ export default function QueueTable({
           </tr>
         )}
         {rows.map((entry) => {
-          // An appointment is not late until its time comes round, so a
-          // booking taken last week is measured from the slot, not from when
-          // someone typed it in. Walk-ins have no slot and start on arrival.
+          // Appointments wait from their slot, walk-ins from arrival.
           const waitingSince = entry.scheduledFor || entry.createdAt;
           const wait = waitedFor(waitingSince);
 
@@ -190,9 +175,7 @@ export default function QueueTable({
                 </td>
                 <td data-label="Case type" className={LABELLED_CELL}>
                   {entry.caseType ? (
-                    // The code here, the spelled-out version on hover: the
-                    // long labels are written for visitors and run to several
-                    // lines in a column this wide.
+                    // Code shown, full label on hover: the labels run long.
                     <span
                       className="text-meta"
                       title={CASE_TYPE_LABEL[entry.caseType]}
@@ -274,16 +257,13 @@ export default function QueueTable({
                     <span className="text-muted">—</span>
                   )}
                 </td>
-                {/* The flex row lives in a wrapper: a <td> that is itself a
-                    flex container stops being a real table cell, which breaks
-                    the row separators. */}
+                {/* A flex <td> stops being a table cell and breaks the row
+                    separators, so the flex row is a wrapper. */}
                 <td className={`${CELL} ${FULL_WIDTH} card-mode:pt-2.5`}>
                   <div className="flex flex-wrap items-center gap-2">
                     {entry.deletedAt ? (
                       <>
-                        {/* A removed row is not part of the queue, so none of
-                          the queue's actions apply to it. Putting it back is
-                          what it is here for. */}
+                        {/* A removed row only offers Put back (and Erase). */}
                         <button
                           type="button"
                           className={`${ACTION} min-w-[6.75rem]`}
@@ -303,15 +283,8 @@ export default function QueueTable({
                       </>
                     ) : (
                       <>
-                        {/* A select rather than a button that walks the
-                          states in a circle: staff move a row wherever it
-                          belongs in one place, and correcting a misclick is
-                          the same control as making it rather than a second
-                          one sitting beside the first.
-
-                          w-auto because the base stylesheet gives every select
-                          width:100%, which in this flex row would take the
-                          whole line and push the two buttons off it. */}
+                        {/* A select, so a misclick is fixed with the same
+                          control. w-auto overrides the base width:100%. */}
                         <select
                           className="w-auto flex-none min-w-[7.5rem] pointer-fine:min-h-9 px-1.5 py-1 text-meta font-semibold"
                           value={entry.status}

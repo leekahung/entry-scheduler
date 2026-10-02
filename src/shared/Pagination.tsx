@@ -1,30 +1,14 @@
-// The base stylesheet makes every button a filled accent pill, so each of
-// these has to undo it — the same thing the queue tabs do. Shorter than a
-// standing button too: this is a control you glance at rather than reach for.
-// Coarse pointers keep the full 2.75rem, since there it is a touch target.
-//
-// Border, fill and colour are left out and added per variant rather than set
-// here and overridden: two utilities for one property are settled by the order
-// Tailwind emits them in, not the order they are written in.
+// Undoes the base filled pill, like the queue tabs. Variants add border, fill
+// and colour, since Tailwind's emit order settles clashing utilities.
 const BASE =
   "rounded-md py-0.5 pointer-fine:min-h-[1.9rem] text-meta font-semibold";
 
-// No border and no fill: the steps read as words rather than boxes.
-// Transparent rather than surface-coloured so they disappear into the page as
-// well as into the kiosk's card.
-//
-// Both are always there and the one that leads nowhere is disabled rather than
-// hidden: the pair stays a fixed shape, and a step that is dimmed says the end
-// of the list has been reached, where one that vanished would say only that
-// something moved.
+// Unboxed words. Both steps always show, the dead one dimmed, so the pair keeps
+// its shape and says the end was reached.
 const STEP = `${BASE} border-0 bg-transparent px-2.5`;
-// A step that goes somewhere is coloured and underlines under the pointer, the
-// same way a link says it can be followed — without a box or a fill, page text
-// in the page's own colour was a word nobody read as pressable.
+// A live step is coloured and underlines on hover, like a link.
 const LIVE_STEP = "text-accent hover:underline underline-offset-4";
-// Faded rather than coloured, so the pair differ in weight as well as in hue:
-// a step that leads nowhere should read as spent to anyone who cannot tell the
-// accent from the page's own ink.
+// Faded as well as uncoloured, so it reads as spent without colour vision.
 const SPENT_STEP = "text-text opacity-40";
 
 type Props = {
@@ -41,9 +25,7 @@ type Props = {
 
 /**
  * Where you are in a list, and the two steps either side of it.
- * Always rendered, both steps closed on a list that fits in one page: the
- * control appearing as a list crosses ten would move everything under it, and
- * a closed pair still says where the list begins and ends.
+ * Always rendered, so the control never appears and shifts the page.
  */
 export default function Pagination({
   page,
@@ -57,18 +39,12 @@ export default function Pagination({
   return (
     <nav
       aria-label={label}
-      // Right-aligned: the counter's width changes with the page ("11–20 of
-      // 34" against "31–34 of 34"), and anchoring the row to the right end
-      // keeps the two steps still while the text either side of them grows.
-      // Where the control is already sized to its content, as at the end of
-      // the console's tab strip, there is no free space and this does nothing.
+      // Right-aligned, so the steps stay still as the counter's width changes.
       className="flex flex-wrap items-center justify-end gap-3 text-meta text-muted"
     >
       {/* No range to give on an empty list, and "0–0" reads as a mistake. */}
       <span>{total === 0 ? "0 of 0" : `${from}–${to} of ${total}`}</span>
-      {/* Which page, said as a sentence rather than as a row of numbers: the
-        list is read in order, so the two steps are what anyone reaches for and
-        the rest was numbers nobody pressed. */}
+      {/* A sentence, not page numbers: the list is read in order. */}
       <span>
         Page {page} of {pages}
       </span>

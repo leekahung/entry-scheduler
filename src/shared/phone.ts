@@ -13,11 +13,8 @@ export function usPhoneDigits(value: string): string {
 
 /**
  * Formats as far as the digits go, so the dashes appear while typing.
- *
- * Anything that cannot be a US number — an extension, an overseas number — is
- * left exactly as it was. Reformatting those produced a different, plausible
- * number rather than an obviously wrong one, which is the worse failure: the
- * field is read off and dialled. The input's own maxLength caps the length.
+ * Anything that cannot be a US number is left as typed, since a plausible
+ * wrong number is worse than an obviously odd one.
  */
 export function formatUsPhone(value: string): string {
   const all = value.replace(/\D/g, "");

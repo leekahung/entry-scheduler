@@ -51,9 +51,8 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
     setError,
     run: attempt,
   } = useAsyncAction("That did not work.");
-  // Everything here changes what somebody else may do, and none of it can be
-  // undone from this panel by the person it happens to, so each is asked
-  // about first — the same as removing someone from the queue.
+  // Each change affects someone else and cannot be undone by them, so all
+  // are confirmed first.
   const [confirming, setConfirming] = useState<Pending | null>(null);
 
   const load = () =>
@@ -164,20 +163,15 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
               setError("That is not a valid email address.");
               return;
             }
-            // Re-adding someone rewrites their row, silently changing who
-            // granted the access and when. Say so instead when the add would
-            // achieve nothing.
+            // Re-adding someone silently rewrites who granted access and when,
+            // so say when an add would change nothing.
             const duplicate = duplicateReason(list, address, role);
             if (duplicate) {
               setError(duplicate);
               return;
             }
-            // Adding an address already on the list rewrites its row, so the
-            // same form that grants access is also how a role is taken away.
-            // It answers like any other add, which is no way to find out you
-            // have just demoted an owner — least of all yourself.
-            // The server refuses this too. Caught here so it reads as the
-            // form's answer rather than as a failed request.
+            // Re-adding as staff demotes, and the form would answer like any
+            // add. The server refuses too; caught here to read as the form's.
             if (address === list.you?.email && role === "staff") {
               setError("You cannot change your own access to staff.");
               return;
@@ -217,10 +211,7 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
               <option value="owner">Owner — can also change this list</option>
             </select>
           </div>
-          {/* A box the height of the controls beside it, so the shorter button
-          is centred on the input and the select rather than sitting on their
-          bottom edge. The two heights are the ones the base stylesheet gives
-          every field, coarse pointers included. */}
+          {/* The controls' height, so the button centres beside them. */}
           <div className="flex h-11 items-center pointer-coarse:h-12">
             <button
               type="submit"

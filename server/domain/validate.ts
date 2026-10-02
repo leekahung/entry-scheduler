@@ -25,9 +25,7 @@ import {
 
 /**
  * A parsed value, or the message to send back as a 400.
- * Handlers read input, check it, and act — no route decides for itself what
- * counts as a valid name, which is how the two create paths once drifted into
- * rejecting and silently truncating the same over-length field.
+ * Shared checks, so the two create paths cannot drift apart again.
  */
 export type Checked<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -50,22 +48,15 @@ export function isDob(value: string): boolean {
   const date = new Date(`${value}T00:00:00Z`);
   // Round-tripping rejects real-looking impossibilities like 2026-02-31.
   if (date.toISOString().slice(0, 10) !== value) return false;
-  // Compared as local calendar days, not instants: after 5pm in Los Angeles
-  // UTC has already rolled over, and comparing timestamps would accept
-  // tomorrow's date as a date of birth for the rest of the evening.
+  // Local calendar days, not instants: after 5pm in LA, UTC would accept
+  // tomorrow's date.
   return value <= localDay(new Date());
 }
 
 /**
- * Blank, or a timestamp normalized to ISO.
- * Returns undefined for junk. Normalizing at the edge matters: the queue
- * orders by comparing these strings, so a stored "Aug 17, 2026 2:00 PM" would
- * sort against ISO timestamps by raw text and land anywhere.
- *
- * A four-digit year is required rather than left to `new Date`, which coerces
- * "5" into a real timestamp in 2001 — a booking that would then sort ahead of
- * every walk-in on the board. Anything else a human might type is still
- * accepted and normalized.
+ * Blank, or a timestamp normalized to ISO; undefined for junk.
+ * The queue sorts these as strings, so they must all be ISO.
+ * A four-digit year is required, or `new Date("5")` lands in 2001.
  */
 export function normalizeScheduledFor(value: string): string | undefined {
   if (value === "") return "";

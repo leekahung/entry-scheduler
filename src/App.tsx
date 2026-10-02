@@ -8,17 +8,12 @@ import {
 } from "react";
 import UserPage from "./pages/UserPage";
 
-// Loaded only when someone opens it. No visitor needs the console, so a phone
-// checking in no longer downloads the row editor, the booking form and the
-// access list to draw a form with a name box on it.
+// Lazy: visitors never need the console, so a phone checking in skips it.
 const AdminPage = lazy(() => import("./pages/AdminPage"));
 
 /**
- * Catches a console that cannot be fetched.
- *
- * A tablet left open across a deploy names a chunk that is gone, and a throw
- * in render with nothing to catch it blanks the page. The fixed build is
- * already served, so this offers the reload. A class: React has no hook.
+ * Catches a console chunk that a deploy has removed from under an open tab.
+ * Offers a reload instead of a blank page. A class: React has no hook for it.
  */
 class ConsoleBoundary extends Component<
   { children: ReactNode },

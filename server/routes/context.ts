@@ -8,10 +8,8 @@ import type { Store } from "../sheet/store.js";
 export type Who = { email: string; role: Role };
 
 /**
- * What every router is handed: the stores it reads, the limiters and guards
- * the app built, and the few questions about a request that more than one area
- * needs to ask. Assembled once in `createApp`, which stays the only place the
- * server's wiring lives.
+ * What every router is handed: stores, limiters, guards and shared request
+ * helpers, assembled once in `createApp`.
  */
 export type RouteContext = {
   store: Store;

@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 
-// A fixed distance, not a screenful: measured against the viewport, a tall
-// desktop window set a threshold its own page could never scroll past, so the
-// button only ever appeared on short screens.
+// A fixed distance: a screenful on a tall window was more than its page could
+// scroll.
 const SHOW_AFTER_PX = 300;
 
 /**

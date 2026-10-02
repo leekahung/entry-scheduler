@@ -57,9 +57,8 @@ describe("polling only while the tab is being read", () => {
     act(() => vi.advanceTimersByTime(1000));
     poll.mockClear();
 
-    // Switching to another tab and back is not a reason to ask again: the
-    // board is a second old, and a console flicked between tabs would spend
-    // the rate limit a whole waiting room shares.
+    // Flicking away and back must not poll again: the board is a second old,
+    // and the rate limit is shared.
     act(() => setVisibility("hidden"));
     act(() => setVisibility("visible"));
     expect(poll).not.toHaveBeenCalled();
