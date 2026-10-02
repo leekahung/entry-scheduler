@@ -15,8 +15,14 @@ import {
   isRemoved,
   UPDATABLE,
 } from "../domain/entry.js";
-import { blankEntry, fromSheetValues, toSheetValues } from "./columns.js";
+import {
+  blankEntry,
+  fromSheetValues,
+  toMonthValues,
+  toSheetValues,
+} from "./columns.js";
 import type { TabStore } from "./sheets.js";
+import { fromStamp, toStamp } from "./stamp.js";
 
 /** How long a read of the spreadsheet is reused before going back to Google. */
 export const CACHE_MS = 5000;
@@ -44,20 +50,28 @@ export type Store = {
     intake?: Intake,
     booking?: Booking,
   ): Promise<Entry>;
-  update(id: number, update: EntryUpdate): Promise<Entry | undefined>;
+  /**
+   * Changes by number also take the sign-in time, when given: erasing frees a
+   * number, and a stale console must not change whoever holds it now.
+   */
+  update(
+    id: number,
+    update: EntryUpdate,
+    createdAt?: string,
+  ): Promise<Entry | undefined>;
   /**
    * Takes an entry off the board without destroying it. The row stays where
    * it is, stamped with the time, and everything that describes the clinic's
    * work filters it out.
    */
-  remove(id: number): Promise<boolean>;
+  remove(id: number, createdAt?: string): Promise<boolean>;
   /** Puts a removed entry back on the board. */
-  restore(id: number): Promise<boolean>;
+  restore(id: number, createdAt?: string): Promise<boolean>;
   /**
    * Erases an entry outright: out of its month tab as well as off the board,
    * for a row that should never have been kept at all.
    */
-  purge(id: number): Promise<boolean>;
+  purge(id: number, createdAt?: string): Promise<boolean>;
   sync(): Promise<SyncResult>;
   /**
    * The whole record a month at a time, newest first — the months already
@@ -82,10 +96,8 @@ export type StoreOptions = {
 
 /**
  * The queue, kept in the clinic's spreadsheet.
- *
- * Every write rewrites the whole tab, and reads are served from a short-lived
- * cache so the five-second polling of the board and the console does not
- * spend the Sheets read quota.
+ * Every write rewrites the whole tab; reads come from a short cache so polling
+ * does not spend the Sheets quota.
  */
 export function createStore(
   transport: SheetTransport,
@@ -105,12 +117,9 @@ export function createStore(
   let filing: Promise<void> = Promise.resolve();
 
   /**
-   * The board, from cache while it is fresh.
-   *
-   * Callers that arrive while a read is in flight join it rather than starting
-   * their own: at five-second polling a full waiting room would otherwise each
-   * spend a Sheets read of their own the moment the cache expires, which is
-   * how the per-minute quota goes and the board goes dark for everybody.
+   * The board, from cache while fresh.
+   * Callers during a read join it, so a polling roomful costs one read, not one
+   * each, when the cache expires.
    */
   async function load(): Promise<Entry[]> {
     if (cache && Date.now() - cachedAt < CACHE_MS) return cache;
@@ -119,9 +128,8 @@ export function createStore(
     const at = generation;
     const run = (async () => {
       const entries = fromSheetValues(await transport.read());
-      // Not once a write has begun: that write reads the board for itself, and
-      // this older copy landing on top of what it saved would take the entry
-      // someone just added back off the board until the cache next expired.
+      // Not once a write has begun, or this older copy would overwrite the
+      // board it saved.
       if (at === generation) {
         cache = entries;
         cachedAt = Date.now();
@@ -138,10 +146,8 @@ export function createStore(
 
   async function save(entries: Entry[]): Promise<void> {
     await transport.write(toSheetValues(entries));
-    // Anything read while this write was in flight is the board as it was
-    // before it. A slow write outlives the cache it was built on — a
-    // rate-limited call backs off for seconds — so a poll can start, read the
-    // old board, and land after this. It must not overwrite what was saved.
+    // A slow write can outlast a poll's read of the old board; bumping the
+    // generation keeps that read from overwriting what was saved.
     generation += 1;
     cache = entries;
     cachedAt = Date.now();
@@ -156,11 +162,8 @@ export function createStore(
     const groups = [...byMonth(entries)];
     if (groups.length === 0) return { months: [], entries: 0 };
 
-    // Only the tabs that are actually there, under the names the spreadsheet
-    // actually uses. A batched read names every range in one call, and a range
-    // naming a sheet that is not there is the kind of thing that fails the
-    // whole call rather than the one range — so the month being filed for the
-    // first time is never asked for.
+    // Only tabs that exist, under their own names: one range naming no sheet
+    // can fail the whole batched read.
     const existing = monthTabs(await tabs.list());
     const archived = await tabs.read(
       groups
@@ -168,15 +171,13 @@ export function createStore(
         .filter((tab): tab is string => tab !== undefined),
     );
 
-    // One read and one write for the whole year rather than a pair per month:
-    // filing used to cost tens of calls against a per-minute quota the
-    // waiting room's polling is already spending.
+    // One batched read and write for the whole year, not a pair per month.
     const writes = groups.map(([key, rows]) => {
       // Back to the tab this month already lives in, where there is one, or a
       // second tab would be made for a month that already has one.
       const tab = existing.get(key) ?? monthTab(key);
       const merged = mergeById(fromSheetValues(archived.get(tab) ?? []), rows);
-      return { tab, values: toSheetValues(merged), rows: rows.length };
+      return { tab, values: toMonthValues(merged), rows: rows.length };
     });
     await tabs.write(writes);
 
@@ -187,11 +188,8 @@ export function createStore(
   }
 
   /**
-   * Takes one entry out of the month tab it was filed into, if it is there.
-   *
-   * Matched on sign-in time as well as id, the same pair `mergeById` keys on:
-   * numbering restarts at #1 whenever the board is emptied, so one month can
-   * hold two different people as #3 and the id alone would take both.
+   * Takes one entry out of its month tab, if it is there.
+   * Matched on id and sign-in time, as `mergeById` keys them.
    */
   async function purgeFiled(going: Entry): Promise<void> {
     if (!tabs) return;
@@ -206,16 +204,12 @@ export function createStore(
     );
     // A row that was never filed costs a read and nothing more.
     if (left.length === filed.length) return;
-    await tabs.write([{ tab, values: toSheetValues(left) }]);
+    await tabs.write([{ tab, values: toMonthValues(left) }]);
   }
 
   /**
-   * The record a month at a time: the months still on the board, and the ones
-   * already filed into tabs of their own.
-   *
-   * A read, so it stays off the write queue — a year of tabs read one after
-   * another would hold every check-in behind it. Board rows win over the
-   * archived copy of the same entry, which is the fresher of the two.
+   * The record a month at a time, board and filed tabs together.
+   * A read, so off the write queue; board rows win over filed copies.
    */
   async function everyMonth(): Promise<Month[]> {
     const onBoard = byMonth(await load());
@@ -225,9 +219,8 @@ export function createStore(
     const keys = [...new Set([...onBoard.keys(), ...filed.keys()])]
       .sort()
       .reverse();
-    // Only the months that have a tab, under the spreadsheet's own name for
-    // them: the rest are on the board alone, and asking for a range that names
-    // no sheet risks the whole batched read.
+    // Only months with a tab, under its own name, so the batched read cannot
+    // fail on a missing sheet.
     const archived = tabs
       ? await tabs.read([...filed.values()])
       : new Map<string, (string | number)[][]>();
@@ -242,9 +235,8 @@ export function createStore(
           // happens to call the tab it came from.
           return {
             tab: monthTab(key),
-            // Filed rows and board rows alike keep a removed entry where it
-            // is; the workbook describes the clinic's work, so it is here
-            // that they come out. Erasing is what takes one off the sheet.
+            // The workbook describes the clinic's work, so removed entries come
+            // out here; only erasing takes them off the sheet.
             entries: mergeById(rows, onBoard.get(key) ?? []).filter(
               (entry) => !isRemoved(entry),
             ),
@@ -281,12 +273,19 @@ export function createStore(
     await save(entries.filter((entry) => !stale.has(entry)));
   }
 
+  /** The entry with this number, if it is still the one signed in then. */
+  const find = (entries: Entry[], id: number, createdAt?: string) =>
+    entries.find(
+      (entry) =>
+        entry.id === id &&
+        (createdAt === undefined || entry.createdAt === createdAt),
+    );
+
   /** Runs work against the freshest copy of the tab, one caller at a time. */
   function queued<T>(work: (entries: Entry[]) => Promise<T> | T): Promise<T> {
     const run = queue.then(async () => {
-      // Never from cache, and never from a read already on its way: a write
-      // must not be built on a copy of the board taken before the last one
-      // landed.
+      // Never from cache or an in-flight read: a write must build on the
+      // board after the last write landed.
       generation += 1;
       cache = null;
       reading = null;
@@ -298,19 +297,14 @@ export function createStore(
   }
 
   /**
-   * A read-modify-write, with the rollover behind it: a change is what files
-   * an ended month away. It runs after rather than before, so a change always
-   * lands on the board staff were looking at — filing first would 404 the very
-   * row someone reopened or removed from the Done tab. Saving to the month
-   * tabs deliberately does not go through here — copying the board must never
-   * empty part of it.
+   * A read-modify-write, then the rollover that files an ended month away.
+   * Filing after, so a change lands on the board staff were looking at.
+   * Saving to the month tabs does not go through here.
    */
   function change<T>(mutate: (entries: Entry[]) => Promise<T> | T): Promise<T> {
     const result = queued(mutate);
-    // Filing joins the same queue, so it still never interleaves with a write
-    // — but off the caller's path. It is a read and a write per month the
-    // board spans, and the visitor whose check-in happens to be the month's
-    // first should not stand at the kiosk through all of them.
+    // Filing queues behind the write but off the caller's path, so the month's
+    // first visitor is not kept waiting at the kiosk.
     const filed = queue.then(rollOver).catch((error) => {
       // The board stands and the next change files again, but without a line
       // here nobody would ever learn that filing had stopped working.
@@ -328,11 +322,13 @@ export function createStore(
 
     add(name, note, intake, booking) {
       return change(async (entries) => {
-        const now = new Date().toISOString();
+        // As the sheet reads it back (whole seconds, first 01:30 at DST's end),
+        // or the kiosk loses its ticket once the board is reread.
+        const now = fromStamp(toStamp(new Date().toISOString()));
         const entry: Entry = {
           ...blankEntry(),
-          // The spreadsheet has no AUTOINCREMENT; the next id comes from the
-          // rows themselves, so a cleared tab starts again at #1.
+          // No AUTOINCREMENT: a cleared tab restarts at #1, and erasing the top
+          // entry frees its number — hence `find` checking the time too.
           id: entries.reduce((top, row) => Math.max(top, row.id), 0) + 1,
           name,
           note,
@@ -346,9 +342,9 @@ export function createStore(
       });
     },
 
-    update(id, update) {
+    update(id, update, createdAt) {
       return change(async (entries) => {
-        const existing = entries.find((entry) => entry.id === id);
+        const existing = find(entries, id, createdAt);
         if (!existing) return undefined;
 
         const merged: Entry = { ...existing };
@@ -356,12 +352,8 @@ export function createStore(
           Object.assign(merged, { [field]: update[field] ?? existing[field] });
         }
         merged.status = update.status ?? existing.status;
-        // Coming back from being helped means nobody helped them after all —
-        // a mis-started row put back in the queue — so the claim goes too.
-        // Reopening a finished entry keeps it: someone did do the work, and
-        // "Helped by" is the log's record of who. Both need an explicit
-        // status: keying off the stored one would wipe a name typed onto an
-        // entry that is merely still waiting.
+        // Back from being helped means nobody did, so the claim goes; reopening
+        // a finished entry keeps it. Both key off an explicit status change.
         if (update.status === "new" && existing.status === "pending") {
           merged.helpedBy = "";
         }
@@ -372,9 +364,9 @@ export function createStore(
       });
     },
 
-    remove(id) {
+    remove(id, createdAt) {
       return change(async (entries) => {
-        const going = entries.find((entry) => entry.id === id);
+        const going = find(entries, id, createdAt);
         if (!going || going.deletedAt) return false;
         const at = new Date().toISOString();
         await save(
@@ -388,9 +380,9 @@ export function createStore(
       });
     },
 
-    restore(id) {
+    restore(id, createdAt) {
       return change(async (entries) => {
-        const back = entries.find((entry) => entry.id === id);
+        const back = find(entries, id, createdAt);
         if (!back?.deletedAt) return false;
         await save(
           entries.map((entry) =>
@@ -403,24 +395,20 @@ export function createStore(
       });
     },
 
-    purge(id) {
+    purge(id, createdAt) {
       return change(async (entries) => {
-        const going = entries.find((entry) => entry.id === id);
+        const going = find(entries, id, createdAt);
         if (!going) return false;
-        // The tab first, and not caught, for the same reason a removal files
-        // before it saves: a half-done erase that leaves the filed copy
-        // standing would report success on the one operation where being
-        // wrong is worst. Both writes are on this queue, so nothing can file
-        // the row back between them.
+        // The tab first, uncaught: a half-done erase must not report success.
+        // Both writes share the queue, so nothing files the row back between.
         await purgeFiled(going);
         await save(entries.filter((entry) => entry.id !== id));
         return true;
       });
     },
 
-    // Nothing is taken off the board, whatever month it is: this copies, and
-    // only a queue change files an ended month away. The board is written back
-    // as well as copied, which renames any headers an older version left.
+    // Copies only, whatever the month: nothing leaves the board. Writing the
+    // board back also renames any old headers.
     sync: () =>
       queued(async (entries) => {
         await save(entries);

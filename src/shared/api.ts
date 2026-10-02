@@ -23,16 +23,24 @@ export class ApiError extends Error {
   }
 }
 
+/** Throws the server's own error message, or `fallback` where it gave none. */
+async function failUnlessOk(res: Response, fallback: string): Promise<void> {
+  if (res.ok) return;
+  const body = (await res.json().catch(() => null)) as { error?: string };
+  throw new ApiError(body?.error ?? fallback, res.status);
+}
+
 async function parse<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new ApiError(
-      body?.error ?? `Request failed (${res.status})`,
-      res.status,
-    );
-  }
+  await failUnlessOk(res, `Request failed (${res.status})`);
   return res.json() as Promise<T>;
 }
+
+/** The entry being acted on: its number, and when it was signed in. */
+type EntryRef = { id: number; createdAt: string };
+
+/** An entry's address with its sign-in time, so a reused number 404s. */
+const entryPath = ({ id, createdAt }: EntryRef, action = "") =>
+  `/api/entries/${id}${action}?createdAt=${encodeURIComponent(createdAt)}`;
 
 const adminHeaders = (passcode: string) => ({
   "Content-Type": "application/json",
@@ -154,10 +162,7 @@ export async function removeStaff(
     method: "DELETE",
     headers: adminHeaders(passcode),
   });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string };
-    throw new ApiError(body?.error ?? "Could not remove access.", res.status);
-  }
+  await failUnlessOk(res, "Could not remove access.");
 }
 
 export type PasscodeResult = {
@@ -215,17 +220,16 @@ export async function fetchAllEntries(passcode: string): Promise<AdminEntry[]> {
 
 export async function updateStatus(
   passcode: string,
-  id: number,
+  entry: EntryRef,
   status: Status,
   helpedBy: string,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
-    await fetch(`/api/entries/${id}`, {
+    await fetch(entryPath(entry), {
       method: "PATCH",
       headers: adminHeaders(passcode),
-      // Omit a blank name so an unset "Helping as" never wipes an existing one
-      // — and omit it entirely when putting someone back in the queue, where
-      // whoever clicked is not the person who helped them.
+      // A blank name never wipes the existing one, and going back to the queue
+      // sends none: whoever clicked did not help them.
       body: JSON.stringify({
         status,
         ...(helpedBy && status !== "new" ? { helpedBy } : {}),
@@ -236,13 +240,11 @@ export async function updateStatus(
 
 /**
  * Saves the per-entry fields an admin can correct after the fact.
- * Partial for the same reason as updateVisitType below: the editor's draft is
- * seeded when it opens, so sending every field would push minutes-old values
- * back over whatever another admin changed in the meantime.
+ * Partial, so a draft seeded minutes ago cannot overwrite others' changes.
  */
 export async function updateDetails(
   passcode: string,
-  id: number,
+  entry: EntryRef,
   details: Partial<
     {
       helpedBy: string;
@@ -254,7 +256,7 @@ export async function updateDetails(
   >,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
-    await fetch(`/api/entries/${id}`, {
+    await fetch(entryPath(entry), {
       method: "PATCH",
       headers: adminHeaders(passcode),
       body: JSON.stringify(details),
@@ -265,11 +267,11 @@ export async function updateDetails(
 /** Patches only the visit type. */
 export async function updateVisitType(
   passcode: string,
-  id: number,
+  entry: EntryRef,
   visitType: VisitType,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
-    await fetch(`/api/entries/${id}`, {
+    await fetch(entryPath(entry), {
       method: "PATCH",
       headers: adminHeaders(passcode),
       body: JSON.stringify({ visitType }),
@@ -277,28 +279,27 @@ export async function updateVisitType(
   );
 }
 
-export async function deleteEntry(passcode: string, id: number): Promise<void> {
-  const res = await fetch(`/api/entries/${id}`, {
+export async function deleteEntry(
+  passcode: string,
+  entry: EntryRef,
+): Promise<void> {
+  const res = await fetch(entryPath(entry), {
     method: "DELETE",
     headers: adminHeaders(passcode),
   });
-  if (!res.ok) {
-    throw new ApiError(`Could not delete entry (${res.status})`, res.status);
-  }
+  await failUnlessOk(res, `Could not delete entry (${res.status})`);
 }
 
 /** Puts a removed entry back on the board. */
 export async function restoreEntry(
   passcode: string,
-  id: number,
+  entry: EntryRef,
 ): Promise<void> {
-  const res = await fetch(`/api/entries/${id}/restore`, {
+  const res = await fetch(entryPath(entry, "/restore"), {
     method: "POST",
     headers: adminHeaders(passcode),
   });
-  if (!res.ok) {
-    throw new ApiError(`Could not restore entry (${res.status})`, res.status);
-  }
+  await failUnlessOk(res, `Could not restore entry (${res.status})`);
 }
 
 /**
@@ -308,21 +309,15 @@ export async function restoreEntry(
  */
 export async function purgeEntry(
   passcode: string,
-  id: number,
+  entry: EntryRef,
   confirm: string,
 ): Promise<void> {
-  const res = await fetch(`/api/entries/${id}/record`, {
+  const res = await fetch(entryPath(entry, "/record"), {
     method: "DELETE",
     headers: adminHeaders(passcode),
     body: JSON.stringify({ confirm }),
   });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string };
-    throw new ApiError(
-      body?.error ?? `Could not erase entry (${res.status})`,
-      res.status,
-    );
-  }
+  await failUnlessOk(res, `Could not erase entry (${res.status})`);
 }
 
 /** Downloads an export through an object URL so the passcode header is sent. */
@@ -335,7 +330,7 @@ async function download(
   const res = await fetch(path, {
     headers: adminHeaders(passcode),
   });
-  if (!res.ok) throw new ApiError(`Export failed (${res.status})`, res.status);
+  await failUnlessOk(res, `Export failed (${res.status})`);
 
   const url = URL.createObjectURL(await res.blob());
   const link = document.createElement("a");

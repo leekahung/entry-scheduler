@@ -44,10 +44,8 @@ const asBinary = (req: request.Test) =>
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
-// One listener for the whole file, delegating to whichever app the current
-// test built. `request(app)` would open an ephemeral port per call, and even
-// binding one per test churned enough of them that a request occasionally
-// landed on a reused port and came back as someone else's answer.
+// One listener per file, delegating to the current test's app: a port per
+// request or per test churned until replies reached the wrong test.
 const server = createServer((req, res) => app(req, res));
 
 beforeEach(() => {
@@ -298,6 +296,46 @@ describe("admin actions", () => {
       status: "pending",
     });
     expect(res.status).toBe(404);
+  });
+
+  // A number freed by erasing goes to the next check-in, so a console still
+  // showing the old row must not land its change on the new person.
+  it("404s a change meant for whoever held the number before", async () => {
+    const id = await join("Ada");
+    const [ada] = (await asAdmin(request(server).get("/api/entries"))).body;
+    const stale = encodeURIComponent("2026-01-01T09:00:00.000Z");
+    const current = encodeURIComponent(ada.createdAt);
+
+    for (const req of [
+      request(server).patch(`/api/entries/${id}?createdAt=${stale}`),
+      request(server).delete(`/api/entries/${id}?createdAt=${stale}`),
+      request(server).delete(`/api/entries/${id}/record?createdAt=${stale}`),
+    ]) {
+      const res = await asAdmin(req).send({
+        status: "pending",
+        confirm: "Ada",
+      });
+      expect(res.status).toBe(404);
+    }
+
+    // Removed for real, so putting her back is refused only for the time.
+    const removed = await asAdmin(
+      request(server).delete(`/api/entries/${id}?createdAt=${current}`),
+    );
+    expect(removed.status).toBe(204);
+    const wrongBack = await asAdmin(
+      request(server).post(`/api/entries/${id}/restore?createdAt=${stale}`),
+    );
+    expect(wrongBack.status).toBe(404);
+    const back = await asAdmin(
+      request(server).post(`/api/entries/${id}/restore?createdAt=${current}`),
+    );
+    expect(back.status).toBe(204);
+
+    const res = await asAdmin(
+      request(server).patch(`/api/entries/${id}?createdAt=${current}`),
+    ).send({ status: "pending" });
+    expect(res.status).toBe(200);
   });
 
   it("leaves a removed entry out of the current list", async () => {
@@ -773,9 +811,8 @@ describe("visit type and appointments", () => {
   });
 
   it("rejects bad intake identically on both create paths", async () => {
-    // These once diverged: the public path rejected, the admin path silently
-    // truncated, losing part of a client's phone number without saying so.
-    // Both now share checkNewEntry, so they cannot answer differently.
+    // These once diverged, the admin path silently truncating; both share
+    // checkNewEntry now.
     const rejected = [
       { gender: "Woman" },
       { phone: "5".repeat(60) },

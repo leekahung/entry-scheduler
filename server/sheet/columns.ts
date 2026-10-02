@@ -3,6 +3,7 @@ import { fromStamp, toStamp } from "./stamp.js";
 import {
   DEFAULT_VISIT_TYPE,
   isVisitType,
+  isRemoved,
   isStatus,
   type Entry,
 } from "../domain/entry.js";
@@ -196,19 +197,30 @@ export function toSheetValues(entries: Entry[]): Cell[][] {
 }
 
 /**
- * Entries as read back from the tab, keyed by header rather than position, so
- * a column inserted by hand does not shift the fields this reads.
- *
- * Reading is the tolerant half. Writing is not: `toSheetValues` emits the
- * canonical column order over the whole range, so a column someone adds by
- * hand is overwritten by the next queue change. The sheet is the app's to
- * rewrite; it is not a document to keep your own columns in.
- *
- * Rows without a numeric id are skipped, which lets staff leave notes or
- * blank lines in the sheet without breaking the queue.
- *
- * Headers the columns used to go by are still accepted, so a sheet written
- * before they were renamed keeps being read until the next write renames it.
+ * A month tab's rows, with a removed, unfinished entry's status as "removed".
+ * The board keeps the real status for Put back; read back, "removed" is "new".
+ */
+export function toMonthValues(entries: Entry[]): Cell[][] {
+  const [header = [], ...rows] = toSheetValues(entries);
+  const status = header.indexOf("Status");
+  return [
+    header,
+    ...rows.map((row, index) => {
+      const entry = entries[index];
+      if (!entry || !isRemoved(entry) || entry.status === "resolved") {
+        return row;
+      }
+      const labelled = [...row];
+      labelled[status] = "removed";
+      return labelled;
+    }),
+  ];
+}
+
+/**
+ * Entries read back by header, so a hand-inserted column shifts nothing.
+ * Writing is strict: the next change rewrites the tab in canonical order.
+ * Rows without a numeric id are skipped; old header names are still accepted.
  */
 export function fromSheetValues(values: Cell[][]): Entry[] {
   const [header, ...rows] = values;

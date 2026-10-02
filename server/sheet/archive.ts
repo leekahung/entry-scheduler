@@ -1,4 +1,4 @@
-import type { Entry } from "../domain/entry.js";
+import { type Entry, isRemoved } from "../domain/entry.js";
 
 const MONTH_NAMES = [
   "January",
@@ -51,20 +51,16 @@ export function monthFromTab(tab: string): string | null {
 }
 
 /**
- * The month tabs a spreadsheet holds, keyed by the month each one is for.
- *
- * The name is kept as the spreadsheet spells it rather than rebuilt from the
- * key: `monthFromTab` trims, so a tab someone named "January 2026 " matches a
- * month but is not called what `monthTab` would call it. Asking for a range
- * that names no sheet is what a batched read must never do.
+ * The month tabs a spreadsheet holds, keyed by month.
+ * Names are kept as spelled ("January 2026 " included), since a batched read
+ * must never name a range that is not a sheet.
  */
 export function monthTabs(tabs: string[]): Map<string, string> {
   const found = new Map<string, string>();
   for (const tab of tabs) {
     const key = monthFromTab(tab);
-    // First wins. Two tabs for one month means someone has been editing the
-    // spreadsheet by hand, and the earlier one is where the app has been
-    // writing.
+    // First wins: a second tab for a month is a hand edit, and the app has
+    // been writing to the earlier one.
     if (key !== null && !found.has(key)) found.set(key, tab);
   }
   return found;
@@ -83,27 +79,21 @@ export function byMonth(entries: Entry[]): Map<string, Entry[]> {
 }
 
 /**
- * Finished entries from a month that has already ended.
- * These are the rows a rollover files away; anything still open stays on the
- * board however old it is, so a booking made for next month is never archived
- * out from under the person waiting on it.
+ * Finished or removed entries from an ended month: what a rollover files.
+ * Anything still open stays on the board however old it is.
  */
 export function finishedBefore(entries: Entry[], month: string): Entry[] {
   return entries.filter(
     (entry) =>
-      entry.status === "resolved" && monthKey(entry.createdAt) !== month,
+      (entry.status === "resolved" || isRemoved(entry)) &&
+      monthKey(entry.createdAt) !== month,
   );
 }
 
 /**
- * A month tab's rows updated with what the board now holds.
- * Rows only the tab has are kept: a re-sync must never drop what an earlier
- * rollover already filed there.
- *
- * Keyed by number *and* sign-in time, not the number alone: numbering used to
- * restart at #1 whenever staff emptied the board, so one month can hold two
- * different people as #3, and matching on the number would file one of them
- * over the other.
+ * A month tab's rows updated from the board, keeping rows only the tab has.
+ * Keyed by number and sign-in time: numbering restarts when the board empties,
+ * so one month can hold two different #3s.
  */
 export function mergeById(archived: Entry[], board: Entry[]): Entry[] {
   const key = (entry: Entry) => `${entry.id}\u0000${entry.createdAt}`;

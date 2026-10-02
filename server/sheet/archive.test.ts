@@ -62,6 +62,23 @@ describe("months as tabs", () => {
     expect(stale.map((entry) => entry.id)).toEqual([1]);
   });
 
+  // Someone who left before being helped is never resolved, so waiting on
+  // that would keep their row on the board for good.
+  it("files a row removed while still waiting", () => {
+    const stale = finishedBefore(
+      [
+        makeEntry({
+          id: 1,
+          createdAt: AUGUST,
+          status: "new",
+          deletedAt: "2026-08-20T10:00:00.000Z",
+        }),
+      ],
+      "2026-09",
+    );
+    expect(stale.map((entry) => entry.id)).toEqual([1]);
+  });
+
   // Taking a row out of a tab is what erasing does. A removal reaching it
   // would be the outcome the erase route's three guards exist to hold shut.
   it("leaves an archived row alone when the board's copy is removed", () => {
@@ -286,6 +303,25 @@ describe("a store with month tabs", () => {
     expect(open.name).toBe("Bo");
   });
 
+  it("files a row removed while waiting, kept in its tab as removed", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(AUGUST));
+    const { tabs, store } = board();
+
+    const left = await store.add("Ada", "");
+    await store.remove(left.id);
+
+    vi.setSystemTime(new Date(SEPTEMBER));
+    await store.add("Bo", "");
+    await store.settled();
+
+    expect((await store.list()).map((entry) => entry.name)).toEqual(["Bo"]);
+    const [header, row] = tabs.current("August 2026");
+    expect(row[header.indexOf("Client Name")]).toBe("Ada");
+    expect(row[header.indexOf("Status")]).toBe("removed");
+    expect(row[header.indexOf("Removed At")]).not.toBe("");
+  });
+
   /** A board whose month tabs cannot finish a write until it is released. */
   function heldBoard() {
     const tabs = fakeTabs();
@@ -374,9 +410,8 @@ describe("a store with month tabs", () => {
   });
 
   it("reads a month tab under the name the spreadsheet gives it", async () => {
-    // A stray trailing space is still January's tab. Rebuilding the name from
-    // the month would ask for "January 2026", which is not a sheet here — and
-    // one bad range can take the whole batched read with it.
+    // The trailing space is still January's tab; asking for "January 2026"
+    // would name no sheet and fail the batched read.
     const tabs = fakeTabs({
       "January 2026 ": toSheetValues([
         makeEntry({

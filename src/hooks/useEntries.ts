@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePoll } from "./usePoll";
 import type { ToastLabels, Toasts } from "../shared/toasts";
 import { VISIT_TYPE_LABEL } from "../shared/types";
@@ -32,16 +32,17 @@ const POLL_MS = 5000;
  */
 const ALERTS_POLL_MS = 30_000;
 
+/** The same person, not just the same number: erasing frees a number. */
+const isSame = (a: AdminEntry, b: AdminEntry) =>
+  a.id === b.id && a.createdAt === b.createdAt;
+
 /** Two staff work one queue, so a row can go while someone is acting on it. */
 const goneFrom = (id: number) =>
   `#${id} is no longer on the board — someone else may have removed it.`;
 
 /**
- * What a sync wrote, said in a sentence.
- *
- * A first sync of a board that has never been filed can span a year, and
- * naming twelve tabs makes a toast nobody reads — past three, the count is the
- * useful part. `Intl.ListFormat` handles the commas and the "and" for the rest.
+ * What a sync wrote, as a sentence.
+ * Past three months the count says more than a list of tab names.
  */
 const NAMED_UP_TO = 3;
 export function syncedMonths(months: string[]): string {
@@ -79,10 +80,8 @@ export type NewBooking = Parameters<typeof bookEntry>[1];
 
 /**
  * Owns the entry list, its polling, and every mutation staff can make.
- *
- * Failed saves are kept apart from the connection state: the poll runs every
- * five seconds, so folding them together would wipe "could not save" off the
- * screen before anyone read it.
+ * Failed saves are kept apart from connection state, or the poll would wipe
+ * them before anyone read them.
  */
 export function useEntries(
   passcode: string,
@@ -94,17 +93,27 @@ export function useEntries(
   const [entries, setEntries] = useState<AdminEntry[]>([]);
   const [alerts, setAlerts] = useState<AdminAlerts | null>(null);
   const [offline, setOffline] = useState(false);
-  // A verdict from the server rather than a network problem, which has to stop
-  // the poll: only failed requests count against the admin rate limit, so five
-  // seconds of retrying would spend the whole budget and lock staff out of
-  // signing back in.
+  // A server verdict stops the poll: failed requests count against the admin
+  // rate limit, and retrying would lock staff out of signing back in.
   const [rejected, setRejected] = useState<ApiError | null>(null);
   // Until the first fetch lands, no entries means unknown, not empty.
   const [loaded, setLoaded] = useState(false);
 
+  // A read sent before a change, or before a newer read already shown, is
+  // stale and must not overwrite the list when it lands.
+  const edits = useRef(0);
+  const asked = useRef(0);
+  const shown = useRef(0);
+
   const refresh = useCallback(async () => {
+    const ticket = ++asked.current;
+    const editsBefore = edits.current;
     try {
-      setEntries(await fetchAllEntries(passcode));
+      const rows = await fetchAllEntries(passcode);
+      if (ticket > shown.current && editsBefore === edits.current) {
+        shown.current = ticket;
+        setEntries(rows);
+      }
       setOffline(false);
       setLoaded(true);
     } catch (err) {
@@ -123,16 +132,12 @@ export function useEntries(
     try {
       setAlerts(await fetchAdminAlerts(passcode));
     } catch (err) {
-      // Owners only. A staff session is refused here, which is not a
-      // connection problem and must not read as one — they simply have no
-      // sign-in warning to see.
+      // Staff are refused here by design; that is not a connection problem.
       if (err instanceof ApiError && err.status === 403) {
         setAlerts(null);
         return;
       }
-      // Anything else stays on the last count rather than clearing the
-      // banner: the queue's own poll is what reports a console that has gone
-      // offline or had its session refused, and it runs six times as often.
+      // Otherwise keep the last count: the queue's poll reports going offline.
     }
   }, [passcode]);
 
@@ -148,9 +153,8 @@ export function useEntries(
   }, [unlocked]);
 
   usePoll(refresh, POLL_MS, unlocked && !rejected);
-  // Owners only. The route refuses staff, and each refusal counts against the
-  // admin rate limit every console request shares — polled regardless, a staff
-  // console spends that budget on 403s until it locks itself out.
+  // Owners only: polled by staff, its 403s would spend the shared admin rate
+  // limit until the console locked itself out.
   usePoll(refreshAlerts, ALERTS_POLL_MS, unlocked && !rejected && owner);
 
   /**
@@ -164,10 +168,12 @@ export function useEntries(
     [track],
   );
 
-  const replace = (updated: AdminEntry) =>
+  const replace = (updated: AdminEntry) => {
+    edits.current += 1;
     setEntries((current) =>
-      current.map((row) => (row.id === updated.id ? updated : row)),
+      current.map((row) => (isSame(row, updated) ? updated : row)),
     );
+  };
 
   return {
     entries,
@@ -192,7 +198,7 @@ export function useEntries(
           },
         },
         async () => {
-          replace(await updateStatus(passcode, entry.id, status, helpedBy));
+          replace(await updateStatus(passcode, entry, status, helpedBy));
         },
       ),
 
@@ -207,7 +213,7 @@ export function useEntries(
           },
         },
         async () => {
-          replace(await updateVisitType(passcode, entry.id, visitType));
+          replace(await updateVisitType(passcode, entry, visitType));
           // The change can move the row, and only the server decides where to.
           await refresh();
         },
@@ -225,7 +231,7 @@ export function useEntries(
           },
         },
         async () => {
-          replace(await updateDetails(passcode, entry.id, details));
+          replace(await updateDetails(passcode, entry, details));
           await refresh();
         },
       ),
@@ -258,7 +264,7 @@ export function useEntries(
           },
         },
         async () => {
-          await deleteEntry(passcode, entry.id);
+          await deleteEntry(passcode, entry);
           // Re-read rather than dropped: the row is still there, now carrying
           // the stamp that moves it to the Removed tab.
           await refresh();
@@ -276,7 +282,7 @@ export function useEntries(
           },
         },
         async () => {
-          await restoreEntry(passcode, entry.id);
+          await restoreEntry(passcode, entry);
           await refresh();
         },
       ),
@@ -294,8 +300,9 @@ export function useEntries(
         async () => {
           // What the owner typed, not the name already on the row: the
           // server's check is only a check if the two can disagree.
-          await purgeEntry(passcode, entry.id, confirm);
-          setEntries((current) => current.filter((row) => row.id !== entry.id));
+          await purgeEntry(passcode, entry, confirm);
+          edits.current += 1;
+          setEntries((current) => current.filter((row) => !isSame(row, entry)));
         },
       ),
 

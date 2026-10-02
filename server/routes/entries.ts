@@ -3,13 +3,17 @@ import { toRows } from "../sheet/log.js";
 import { toXlsx } from "../sheet/xlsx.js";
 import { currentMonth, monthTab } from "../sheet/archive.js";
 import { isDue, isRemoved, queueOrder } from "../domain/entry.js";
-import { wrap } from "../lib/http.js";
+import { wrap, type Req } from "../lib/http.js";
 import {
   checkBooking,
   checkNewEntry,
   checkUpdate,
 } from "../domain/validate.js";
 import type { RouteContext } from "./context.js";
+
+/** The sign-in time sent with an entry's number, so a reused number 404s. */
+const signedInAt = (req: Req) =>
+  typeof req.query.createdAt === "string" ? req.query.createdAt : undefined;
 
 /** Admin only: the full records, status changes, deletion, and the exports. */
 export function entryRoutes({
@@ -60,9 +64,8 @@ export function entryRoutes({
     }),
   );
 
-  // Copies the board into a tab per month it spans. Nothing comes off the
-  // board: an ended month is filed away on its own at the next change.
-  // Declared above `/entries/:id` so the two never compete to match.
+  // Copies the board into its month tabs; nothing leaves the board. Declared
+  // above `/entries/:id` so the two never compete.
   routes.post(
     "/entries/archive",
     adminLimiter,
@@ -90,7 +93,7 @@ export function entryRoutes({
         return;
       }
 
-      const updated = await store.update(id, checked.value);
+      const updated = await store.update(id, checked.value, signedInAt(req));
       if (!updated) {
         res.status(404).json({ error: "Entry not found." });
         return;
@@ -99,15 +102,8 @@ export function entryRoutes({
     }),
   );
 
-  // Erasing a record outright, rather than filing it away: for a row that
-  // should never have been collected — a duplicate check-in, a test entry,
-  // someone who asked not to be recorded.
-  //
-  // Three guards, because this is the one action nothing can undo. Owners
-  // only. A separate path from the removal staff use, so no ordinary delete
-  // can reach it by mistake. And the caller has to name the person: a stray
-  // or repeated request carries no name and is refused, so the confirmation
-  // is the server's, not just the dialog's.
+  // Erases a record outright; nothing undoes it, so owners only, its own
+  // route, and the caller must send the person's name for the server to check.
   routes.delete(
     "/entries/:id/record",
     adminLimiter,
@@ -120,7 +116,11 @@ export function entryRoutes({
         return;
       }
 
-      const going = (await store.list()).find((entry) => entry.id === id);
+      const at = signedInAt(req);
+      const going = (await store.list()).find(
+        (entry) =>
+          entry.id === id && (at === undefined || entry.createdAt === at),
+      );
       if (!going) {
         res.status(404).json({ error: "Entry not found." });
         return;
@@ -134,7 +134,7 @@ export function entryRoutes({
         return;
       }
 
-      if (!(await store.purge(id))) {
+      if (!(await store.purge(id, at))) {
         res.status(404).json({ error: "Entry not found." });
         return;
       }
@@ -148,7 +148,7 @@ export function entryRoutes({
     requireAdmin,
     wrap(async (req, res) => {
       const id = Number(req.params.id);
-      if (!Number.isInteger(id) || !(await store.remove(id))) {
+      if (!Number.isInteger(id) || !(await store.remove(id, signedInAt(req)))) {
         res.status(404).json({ error: "Entry not found." });
         return;
       }
@@ -164,7 +164,10 @@ export function entryRoutes({
     requireAdmin,
     wrap(async (req, res) => {
       const id = Number(req.params.id);
-      if (!Number.isInteger(id) || !(await store.restore(id))) {
+      if (
+        !Number.isInteger(id) ||
+        !(await store.restore(id, signedInAt(req)))
+      ) {
         res.status(404).json({ error: "Entry not found." });
         return;
       }
@@ -187,13 +190,8 @@ export function entryRoutes({
     }),
   );
 
-  // The whole record as one workbook, a tab per month, laid out the same way.
-  // The list above is the board as it stands; this is the file to keep.
-  //
-  // Owners only, unlike that one, which holds the board every staff member is
-  // already looking at. This holds every name, date of birth, phone number and
-  // note the clinic has ever filed. Copying the board into its month tabs is
-  // an owner's, so reading them all back has to be too.
+  // The whole record, a tab per month. Owners only: unlike the current list,
+  // it holds every name, DOB and phone the clinic has filed.
   routes.get(
     "/entries.xlsx",
     adminLimiter,

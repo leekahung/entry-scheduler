@@ -19,6 +19,39 @@ describe("the store", () => {
     await expect(store.list()).resolves.toHaveLength(1);
   });
 
+  // The kiosk finds its own ticket on the board by this time, so the one a
+  // check-in answers with has to survive the sheet's whole-second stamps.
+  it("answers a check-in with the sign-in time the sheet reads back", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-10T12:00:00.345Z"));
+    const store = createStore(fakeSheet().transport);
+
+    const entry = await store.add("Ada", "");
+    vi.advanceTimersByTime(CACHE_MS + 1);
+    const [onBoard] = await store.list();
+    expect(onBoard?.createdAt).toBe(entry.createdAt);
+  });
+
+  // 01:30 happens twice that night and the sheet's stamp carries no zone, so
+  // the second one reads back as the first.
+  it("answers with the time the sheet reads back when the clocks go back", async () => {
+    const held = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-11-01T09:30:00.000Z"));
+      const store = createStore(fakeSheet().transport);
+
+      const entry = await store.add("Ada", "");
+      vi.advanceTimersByTime(CACHE_MS + 1);
+      const [onBoard] = await store.list();
+      expect(onBoard?.createdAt).toBe(entry.createdAt);
+    } finally {
+      if (held === undefined) delete process.env.TZ;
+      else process.env.TZ = held;
+    }
+  });
+
   it("numbers from the rows already in the sheet", async () => {
     const sheet = fakeSheet();
     const store = createStore(sheet.transport);
@@ -141,6 +174,36 @@ describe("the store", () => {
     expect(await store.purge(entry.id)).toBe(true);
     await store.settled();
     expect(tabs.rows(monthTab(currentMonth()))).toHaveLength(0);
+  });
+
+  it("leaves alone the person a freed number went to", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-10T12:00:00.000Z"));
+    const store = createStore(fakeSheet().transport);
+    await store.add("Ada", "");
+    const erased = await store.add("Bo", "");
+    await store.remove(erased.id);
+    await store.purge(erased.id);
+
+    vi.setSystemTime(new Date("2026-09-10T12:05:00.000Z"));
+    const next = await store.add("Cai", "");
+    expect(next.id).toBe(erased.id);
+
+    const was = erased.createdAt;
+    expect(
+      await store.update(next.id, { adminNote: "x" }, was),
+    ).toBeUndefined();
+    expect(await store.remove(next.id, was)).toBe(false);
+    expect(await store.purge(next.id, was)).toBe(false);
+
+    // Removed for real, so putting Cai back is refused only for the time.
+    expect(await store.remove(next.id, next.createdAt)).toBe(true);
+    expect(await store.restore(next.id, was)).toBe(false);
+    expect(await store.restore(next.id, next.createdAt)).toBe(true);
+    expect((await store.list()).map((entry) => entry.name)).toEqual([
+      "Ada",
+      "Cai",
+    ]);
   });
 
   it("reports an unknown id rather than writing", async () => {
