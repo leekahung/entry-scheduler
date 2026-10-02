@@ -86,9 +86,11 @@ A check-in turned away for a missing name does not count, since it never
 reaches the spreadsheet; one that failed there does. Each address is also held
 to 100 a minute, sized for a waiting room sharing one connection.
 
-**Currently waiting** lists everyone in line as a number, a shortened name
-("Ada L."), and a status. The shortening happens on the server, so the only
-full name this screen ever holds is the reader's own.
+**Currently waiting** lists everyone in line as a number, a shortened name,
+and a status. The first name stays and every name after it becomes an initial —
+"Ada L.", or "Maria G. L." for two surnames, since nothing tells a middle name
+from the first of them. The shortening happens on the server, so the only full
+name this screen ever holds is the reader's own.
 
 ## The staff console
 
@@ -647,8 +649,8 @@ booked for next month is never filed away from under the person waiting on it.
 An entry keeps the month it was taken in, so a case carried over is written to
 its own month rather than the current one, and a tab keeps rows the board no
 longer has: saving again merges rather than replacing, matching on the entry
-number together with its sign-in time, since numbering used to restart and one
-month can hold two different people as #3.
+number together with its sign-in time, since numbering restarts at #1 when the
+board empties and one month can hold two different people as #3.
 
 Months are cut in the server's local time. A container is on UTC unless it is
 told otherwise, and an entry taken on the evening of the 31st would then be
@@ -697,9 +699,10 @@ the time in a `Removed At` column and stays exactly where it is. Every view
 that describes the room filters it out: the public board, the queue tabs, the
 counts in the header, and the exports. It appears in one place, the **Removed**
 tab, where **Put back** clears the stamp and returns it to the board — for as
-long as the row is on it. A row both removed and finished is filed away when
-its month closes, like every other finished row, so removing is reversible for
-the month it happened in rather than for good.
+long as the row is on it. A removed row is filed away when its month closes,
+like every finished row, so removing is reversible for the month it happened in
+rather than for good. In the month tab one removed before anyone finished it
+reads `removed` in the Status column; one already helped keeps `resolved`.
 
 Every tab is read ten rows at a time, as is the visitor's waiting list. The
 control says which rows are on screen and where in the list they fall — "11–20
@@ -737,8 +740,8 @@ stays filed exactly where it is and is left out when the workbook is built.
 A removal never rewrites a month tab: taking a row out of one is what erasing
 does, and erasing is the guarded action. Rollover files a removed row like any
 other, which is also what keeps the board from growing without end — a removal
-is reversible for the month it happened in, and a row both removed and
-finished is filed away when that month closes, the same as every other
+is reversible for the month it happened in, and a removed row is filed away
+when that month closes whether or not anyone finished it, the same as every
 finished row.
 
 Erasing is the other half, and an owner's alone: for a row that should never
@@ -747,8 +750,15 @@ be recorded — `DELETE /api/entries/:id/record` takes it out of the month tab a
 well as off the board, for good. It is offered on a removed row, not a live
 one, so the reversible step always comes first. Both writes go through the same
 queue as every other change, so nothing can file the row back between them.
-Doing this by hand in Google Sheets does not work: the next sync merges the
-board back into the tab and the row returns, with nobody told.
+Doing this by hand in Google Sheets does not work while the row is still on the
+board: the next sync merges the board back into the tab and the row returns,
+with nobody told.
+
+The console can only erase a row that is still on the board. Once its month
+closes, a removed row is filed away into its month tab and leaves the Removed
+tab, so it can no longer be put back or erased from the console. Erase it
+within the month, or after that delete its row from the month tab by hand —
+with nothing left on the board to merge it back, that deletion sticks.
 
 It is the one action nothing undoes, so three things stand in front of it. It
 is owners only. It is a separate route from the removal staff use, so no
@@ -758,6 +768,12 @@ which the server checks against the row — the console asks the owner to type i
 matched on sign-in time as well as id, the pair `mergeById` keys on: numbering
 restarts at #1 when the board is emptied, so one month can hold two different
 people as #3 and the id alone would take both.
+
+Erasing frees the number, and the next check-in is given it. So every change
+the console makes to a row — a status, an edit, a removal, putting it back,
+erasing it — sends the row's sign-in time as `?createdAt=` alongside the
+number, and the server answers 404 where they no longer match: a console still
+showing the erased row is told it is gone rather than changing the newcomer.
 
 ## Exports
 
