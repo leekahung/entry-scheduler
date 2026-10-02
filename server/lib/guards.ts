@@ -10,7 +10,7 @@ import {
 } from "./auth.js";
 import type { Req } from "./http.js";
 import { isLocalAddress } from "./net.js";
-import type { Role, StaffStore } from "../domain/staff.js";
+import type { Role, StaffStore, Who } from "../domain/staff.js";
 import { normalizeEmail } from "../shared/email.js";
 
 /**
@@ -58,12 +58,23 @@ export function createGuards({
     return member?.role ?? null;
   };
 
-  /** Who this request is, and what they may do. */
-  const identify = async (req: Req) => {
+  const lookUp = async (req: Req): Promise<Who | null> => {
     const email = signedInEmail(req);
     if (!email) return null;
     const role = await roleForEmail(email);
     return role ? { email: normalizeEmail(email), role } : null;
+  };
+  // Each guard and then the handler ask, so one request asks several times.
+  const answered = new WeakMap<Req, Promise<Who | null>>();
+
+  /** Who this request is, and what they may do; worked out once per request. */
+  const identify = (req: Req): Promise<Who | null> => {
+    let who = answered.get(req);
+    if (!who) {
+      who = lookUp(req);
+      answered.set(req, who);
+    }
+    return who;
   };
 
   /**

@@ -1,11 +1,8 @@
 import type { RequestHandler } from "express";
 import type { Req } from "../lib/http.js";
-import type { Role, StaffStore } from "../domain/staff.js";
+import type { Role, StaffStore, Who } from "../domain/staff.js";
 import type { SheetsConfig } from "../sheet/sheets.js";
 import type { Store } from "../sheet/store.js";
-
-/** Who a request is, once the session and the staff list agree on it. */
-export type Who = { email: string; role: Role };
 
 /**
  * What every router is handed: stores, limiters, guards and shared request
