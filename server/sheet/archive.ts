@@ -42,7 +42,7 @@ export function monthTab(key: string): string {
  * The month a tab holds, or null for a tab that is not one — the live log,
  * the staff list, or anything staff have added themselves.
  */
-export function monthFromTab(tab: string): string | null {
+function monthFromTab(tab: string): string | null {
   const [, name, year] = /^([A-Za-z]+) (\d{4})$/.exec(tab.trim()) ?? [];
   if (!name || !year) return null;
   const month = MONTH_NAMES.indexOf(name);

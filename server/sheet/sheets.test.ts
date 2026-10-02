@@ -506,6 +506,42 @@ describe("googleTabs", () => {
     // 60 tabs at 24 a batch: three requests rather than sixty.
     expect(calls).toHaveLength(3);
   });
+
+  // Recorded only once a write lands: after a failed shorter write the tab
+  // still holds every row, and the next write must blank them all.
+  it("still blanks the old tail after a shorter write fails", async () => {
+    const bodies: { data: { values: unknown[][] }[] }[] = [];
+    let failNext = false;
+    vi.stubGlobal("fetch", (url: string, init: RequestInit) => {
+      if (url.includes("batchGet")) {
+        return Promise.resolve(
+          Response.json({
+            valueRanges: [
+              { range: "'August 2026'!A1:Z3", values: [["h"], ["a"], ["b"]] },
+            ],
+          }),
+        );
+      }
+      if (url.includes("/values:batchUpdate")) {
+        bodies.push(JSON.parse(String(init.body)));
+        if (failNext) {
+          failNext = false;
+          return Promise.resolve(new Response("bad request", { status: 400 }));
+        }
+      }
+      return Promise.resolve(Response.json({}));
+    });
+    const tabs = googleTabs(config, token);
+    await tabs.read(["August 2026"]);
+
+    failNext = true;
+    await expect(
+      tabs.write([{ tab: "August 2026", values: [["h"], ["a"]] }]),
+    ).rejects.toThrow();
+    await tabs.write([{ tab: "August 2026", values: [["h"], ["a"]] }]);
+
+    expect(bodies.at(-1)?.data[0]?.values).toEqual([["h"], ["a"], [""]]);
+  });
 });
 
 describe("tabUrl", () => {

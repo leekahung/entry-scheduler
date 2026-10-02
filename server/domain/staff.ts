@@ -1,9 +1,13 @@
+import { createSheetCache } from "../sheet/sheetCache.js";
 import type { SheetTransport } from "../sheet/store.js";
 import { isEmailish, normalizeEmail } from "../shared/email.js";
 
 /** Owners may change who has access; staff may only work the queue. */
-export const ROLES = ["owner", "staff"] as const;
+const ROLES = ["owner", "staff"] as const;
 export type Role = (typeof ROLES)[number];
+
+/** Who a request is, once the session and the staff list agree on it. */
+export type Who = { email: string; role: Role };
 
 export type StaffMember = {
   email: string;
@@ -81,48 +85,17 @@ export type StaffStore = {
  * Cached since every admin request reads it; writes are queued.
  */
 export function createStaffStore(transport: SheetTransport): StaffStore {
-  let cache: StaffMember[] | null = null;
-  let cachedAt = 0;
-  let queue: Promise<unknown> = Promise.resolve();
-  // Bumped by every write, so a read already in flight cannot cache the old
-  // list and hand a removed member their access back.
-  let generation = 0;
-
-  async function load(): Promise<StaffMember[]> {
-    if (cache && Date.now() - cachedAt < STAFF_CACHE_MS) return cache;
-    const at = generation;
-    const members = fromStaffValues(await transport.read());
-    if (at === generation) {
-      cache = members;
-      cachedAt = Date.now();
-    }
-    return members;
-  }
-
-  async function save(members: StaffMember[]): Promise<void> {
-    await transport.write(toStaffValues(members));
-    generation += 1;
-    cache = members;
-    cachedAt = Date.now();
-  }
-
-  function change<T>(
-    mutate: (members: StaffMember[]) => Promise<T> | T,
-  ): Promise<T> {
-    const run = queue.then(async () => {
-      // Never from cache: granting access must not build on a stale read.
-      cache = null;
-      return mutate(await load());
-    });
-    queue = run.catch(() => {});
-    return run;
-  }
+  const { load, save, queued } = createSheetCache(
+    async () => fromStaffValues(await transport.read()),
+    (members: StaffMember[]) => transport.write(toStaffValues(members)),
+    STAFF_CACHE_MS,
+  );
 
   return {
     list: () => load(),
 
     add(email, role, addedBy) {
-      return change(async (members) => {
+      return queued(async (members) => {
         const member: StaffMember = {
           email: normalizeEmail(email),
           role,
@@ -138,7 +111,7 @@ export function createStaffStore(transport: SheetTransport): StaffStore {
     },
 
     remove(email) {
-      return change(async (members) => {
+      return queued(async (members) => {
         const target = normalizeEmail(email);
         const left = members.filter((row) => row.email !== target);
         if (left.length === members.length) return false;

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fakeSheet, fakeTabs } from "./sheet.fixture.js";
 import { CACHE_MS, createStore, type SheetTransport } from "./store.js";
 import { currentMonth, monthTab } from "./archive.js";
+import { toSheetValues } from "./columns.js";
+import { makeEntry } from "../domain/entry.fixture.js";
 
 describe("the store", () => {
   beforeEach(() => {
@@ -204,6 +206,48 @@ describe("the store", () => {
       "Ada",
       "Cai",
     ]);
+  });
+
+  // Only a hand edit can put two rows under one number, but a change to one
+  // must still leave the other person's row alone.
+  it("changes only the row it found when two share a number", async () => {
+    const ada = makeEntry({
+      id: 6,
+      name: "Ada",
+      createdAt: "2026-09-10T17:00:00.000Z",
+    });
+    const bo = makeEntry({
+      id: 6,
+      name: "Bo",
+      createdAt: "2026-09-10T18:00:00.000Z",
+    });
+    const store = createStore(fakeSheet(toSheetValues([ada, bo])).transport);
+
+    await store.update(6, { adminNote: "seen" }, bo.createdAt);
+    await store.remove(6, bo.createdAt);
+    const rows = await store.list();
+    expect(
+      rows.map((row) => [row.name, row.adminNote, row.deletedAt !== ""]),
+    ).toEqual([
+      ["Ada", "", false],
+      ["Bo", "seen", true],
+    ]);
+
+    await store.restore(6, bo.createdAt);
+    expect(await store.purge(6, bo.createdAt)).toBe(true);
+    expect((await store.list()).map((row) => row.name)).toEqual(["Ada"]);
+  });
+
+  it("finds an entry by number, and by sign-in time when given one", async () => {
+    const store = createStore(fakeSheet().transport);
+    const ada = await store.add("Ada", "");
+
+    expect((await store.find(ada.id))?.name).toBe("Ada");
+    expect((await store.find(ada.id, ada.createdAt))?.name).toBe("Ada");
+    expect(
+      await store.find(ada.id, "2026-01-01T09:00:00.000Z"),
+    ).toBeUndefined();
+    expect(await store.find(99)).toBeUndefined();
   });
 
   it("reports an unknown id rather than writing", async () => {

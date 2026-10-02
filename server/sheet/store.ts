@@ -1,26 +1,14 @@
-import {
-  byMonth,
-  currentMonth,
-  finishedBefore,
-  mergeById,
-  monthKey,
-  monthTab,
-  monthTabs,
-} from "./archive.js";
+import { currentMonth, finishedBefore } from "./archive.js";
 import {
   type Booking,
   type Entry,
   type EntryUpdate,
   type Intake,
-  isRemoved,
   UPDATABLE,
 } from "../domain/entry.js";
-import {
-  blankEntry,
-  fromSheetValues,
-  toMonthValues,
-  toSheetValues,
-} from "./columns.js";
+import { blankEntry, fromSheetValues, toSheetValues } from "./columns.js";
+import { createFiling, type Month, type SyncResult } from "./filing.js";
+import { createSheetCache } from "./sheetCache.js";
 import type { TabStore } from "./sheets.js";
 import { fromStamp, toStamp } from "./stamp.js";
 
@@ -29,21 +17,17 @@ export const CACHE_MS = 5000;
 
 /**
  * Reads and writes the whole tab. The Google implementation lives in
- * `sheets.ts`; tests supply an in-memory one.
+ * `transport.ts`; tests supply an in-memory one.
  */
 export type SheetTransport = {
   read(): Promise<(string | number)[][]>;
   write(values: (string | number)[][]): Promise<void>;
 };
 
-/** What a sync wrote, for the console to report back. */
-export type SyncResult = { months: string[]; entries: number };
-
-/** One month of the record, as the tab it is kept in. */
-export type Month = { tab: string; entries: Entry[] };
-
 export type Store = {
   list(): Promise<Entry[]>;
+  /** The entry with this number, and this sign-in time when given one. */
+  find(id: number, createdAt?: string): Promise<Entry | undefined>;
   add(
     name: string,
     note: string,
@@ -103,150 +87,14 @@ export function createStore(
   transport: SheetTransport,
   { tabs }: StoreOptions = {},
 ): Store {
-  let cache: Entry[] | null = null;
-  let cachedAt = 0;
-  // The read on its way to Google, shared by everyone who asks while it runs.
-  let reading: Promise<Entry[]> | null = null;
-  // Bumped by every write, so a read that was already in flight cannot put its
-  // pre-write copy of the board into the cache afterwards.
-  let generation = 0;
-  // Read-modify-write over a whole tab has no transaction behind it, so
-  // writes are queued rather than interleaved.
-  let queue: Promise<unknown> = Promise.resolve();
-  // The filing the last change set going, for `settled` to wait on.
-  let filing: Promise<void> = Promise.resolve();
-
-  /**
-   * The board, from cache while fresh.
-   * Callers during a read join it, so a polling roomful costs one read, not one
-   * each, when the cache expires.
-   */
-  async function load(): Promise<Entry[]> {
-    if (cache && Date.now() - cachedAt < CACHE_MS) return cache;
-    if (reading) return reading;
-
-    const at = generation;
-    const run = (async () => {
-      const entries = fromSheetValues(await transport.read());
-      // Not once a write has begun, or this older copy would overwrite the
-      // board it saved.
-      if (at === generation) {
-        cache = entries;
-        cachedAt = Date.now();
-      }
-      return entries;
-    })();
-    reading = run;
-    const finished = () => {
-      if (reading === run) reading = null;
-    };
-    run.then(finished, finished);
-    return run;
-  }
-
-  async function save(entries: Entry[]): Promise<void> {
-    await transport.write(toSheetValues(entries));
-    // A slow write can outlast a poll's read of the old board; bumping the
-    // generation keeps that read from overwriting what was saved.
-    generation += 1;
-    cache = entries;
-    cachedAt = Date.now();
-  }
-
-  /**
-   * Copies the board into a tab per month it spans, merging rather than
-   * replacing so a month already filed away keeps its rows.
-   */
-  async function syncMonths(entries: Entry[]): Promise<SyncResult> {
-    if (!tabs) return { months: [], entries: 0 };
-    const groups = [...byMonth(entries)];
-    if (groups.length === 0) return { months: [], entries: 0 };
-
-    // Only tabs that exist, under their own names: one range naming no sheet
-    // can fail the whole batched read.
-    const existing = monthTabs(await tabs.list());
-    const archived = await tabs.read(
-      groups
-        .map(([key]) => existing.get(key))
-        .filter((tab): tab is string => tab !== undefined),
-    );
-
-    // One batched read and write for the whole year, not a pair per month.
-    const writes = groups.map(([key, rows]) => {
-      // Back to the tab this month already lives in, where there is one, or a
-      // second tab would be made for a month that already has one.
-      const tab = existing.get(key) ?? monthTab(key);
-      const merged = mergeById(fromSheetValues(archived.get(tab) ?? []), rows);
-      return { tab, values: toMonthValues(merged), rows: rows.length };
-    });
-    await tabs.write(writes);
-
-    return {
-      months: writes.map(({ tab }) => tab),
-      entries: writes.reduce((total, { rows }) => total + rows, 0),
-    };
-  }
-
-  /**
-   * Takes one entry out of its month tab, if it is there.
-   * Matched on id and sign-in time, as `mergeById` keys them.
-   */
-  async function purgeFiled(going: Entry): Promise<void> {
-    if (!tabs) return;
-    // The spreadsheet's own name for that month, where it has one — the tab
-    // `syncMonths` would have filed into, which need not be the computed name.
-    const tab = monthTabs(await tabs.list()).get(monthKey(going.createdAt));
-    if (!tab) return;
-
-    const filed = fromSheetValues((await tabs.read([tab])).get(tab) ?? []);
-    const left = filed.filter(
-      (row) => row.id !== going.id || row.createdAt !== going.createdAt,
-    );
-    // A row that was never filed costs a read and nothing more.
-    if (left.length === filed.length) return;
-    await tabs.write([{ tab, values: toMonthValues(left) }]);
-  }
-
-  /**
-   * The record a month at a time, board and filed tabs together.
-   * A read, so off the write queue; board rows win over filed copies.
-   */
-  async function everyMonth(): Promise<Month[]> {
-    const onBoard = byMonth(await load());
-    const filed = tabs
-      ? monthTabs(await tabs.list())
-      : new Map<string, string>();
-    const keys = [...new Set([...onBoard.keys(), ...filed.keys()])]
-      .sort()
-      .reverse();
-    // Only months with a tab, under its own name, so the batched read cannot
-    // fail on a missing sheet.
-    const archived = tabs
-      ? await tabs.read([...filed.values()])
-      : new Map<string, (string | number)[][]>();
-
-    return (
-      keys
-        .map((key) => {
-          const rows = fromSheetValues(
-            archived.get(filed.get(key) ?? "") ?? [],
-          );
-          // Named as the workbook should read it, whatever the spreadsheet
-          // happens to call the tab it came from.
-          return {
-            tab: monthTab(key),
-            // The workbook describes the clinic's work, so removed entries come
-            // out here; only erasing takes them off the sheet.
-            entries: mergeById(rows, onBoard.get(key) ?? []).filter(
-              (entry) => !isRemoved(entry),
-            ),
-          };
-        })
-        // A month tab someone emptied by hand is a tab with nothing in it, and
-        // an empty sheet in the workbook says less than no sheet at all.
-        .filter((month) => month.entries.length > 0)
-    );
-  }
+  const { load, save, enqueue, queued } = createSheetCache(
+    async () => fromSheetValues(await transport.read()),
+    (entries: Entry[]) => transport.write(toSheetValues(entries)),
+    CACHE_MS,
+  );
+  const filing = createFiling(tabs);
+  // The rollover the last change set going, for `settled` to wait on.
+  let lastRollover: Promise<void> = Promise.resolve();
 
   /**
    * Files away a month that has ended: everything on the board goes to its own
@@ -255,13 +103,12 @@ export function createStore(
    */
   async function rollOver(): Promise<void> {
     if (!tabs) return;
-    // The board as the change left it; `save` refreshes the cache, and a
-    // change that saved nothing has nothing to file.
-    const entries = cache ?? (await load());
+    // Inside the queue no write can be running, so this read is current.
+    const entries = await load();
     const stale = new Set(finishedBefore(entries, currentMonth()));
     if (stale.size === 0) return;
     try {
-      await syncMonths(entries);
+      await filing.sync(entries);
     } catch (error) {
       // Filing can wait for the next change; the queue cannot. Without this a
       // month tab Google is unhappy with is retried on every change forever.
@@ -281,21 +128,6 @@ export function createStore(
         (createdAt === undefined || entry.createdAt === createdAt),
     );
 
-  /** Runs work against the freshest copy of the tab, one caller at a time. */
-  function queued<T>(work: (entries: Entry[]) => Promise<T> | T): Promise<T> {
-    const run = queue.then(async () => {
-      // Never from cache or an in-flight read: a write must build on the
-      // board after the last write landed.
-      generation += 1;
-      cache = null;
-      reading = null;
-      return work(await load());
-    });
-    // Keep the chain alive even when this caller's write fails.
-    queue = run.catch(() => {});
-    return run;
-  }
-
   /**
    * A read-modify-write, then the rollover that files an ended month away.
    * Filing after, so a change lands on the board staff were looking at.
@@ -305,20 +137,20 @@ export function createStore(
     const result = queued(mutate);
     // Filing queues behind the write but off the caller's path, so the month's
     // first visitor is not kept waiting at the kiosk.
-    const filed = queue.then(rollOver).catch((error) => {
+    lastRollover = enqueue(rollOver).catch((error) => {
       // The board stands and the next change files again, but without a line
       // here nobody would ever learn that filing had stopped working.
       console.error("Filing the ended month away failed:", error);
     });
-    queue = filed;
-    filing = filed;
     return result;
   }
 
   return {
     list: () => load(),
-    months: () => everyMonth(),
-    settled: () => filing,
+    find: async (id, createdAt) => find(await load(), id, createdAt),
+    // A read, so off the write queue.
+    months: async () => filing.months(await load()),
+    settled: () => lastRollover,
 
     add(name, note, intake, booking) {
       return change(async (entries) => {
@@ -359,7 +191,10 @@ export function createStore(
         }
         merged.updatedAt = new Date().toISOString();
 
-        await save(entries.map((entry) => (entry.id === id ? merged : entry)));
+        // The row found, not every row with its number.
+        await save(
+          entries.map((entry) => (entry === existing ? merged : entry)),
+        );
         return merged;
       });
     },
@@ -371,7 +206,7 @@ export function createStore(
         const at = new Date().toISOString();
         await save(
           entries.map((entry) =>
-            entry.id === id
+            entry === going
               ? { ...entry, deletedAt: at, updatedAt: at }
               : entry,
           ),
@@ -386,7 +221,7 @@ export function createStore(
         if (!back?.deletedAt) return false;
         await save(
           entries.map((entry) =>
-            entry.id === id
+            entry === back
               ? { ...entry, deletedAt: "", updatedAt: new Date().toISOString() }
               : entry,
           ),
@@ -401,8 +236,8 @@ export function createStore(
         if (!going) return false;
         // The tab first, uncaught: a half-done erase must not report success.
         // Both writes share the queue, so nothing files the row back between.
-        await purgeFiled(going);
-        await save(entries.filter((entry) => entry.id !== id));
+        await filing.purge(going);
+        await save(entries.filter((entry) => entry !== going));
         return true;
       });
     },
@@ -412,7 +247,7 @@ export function createStore(
     sync: () =>
       queued(async (entries) => {
         await save(entries);
-        return syncMonths(entries);
+        return filing.sync(entries);
       }),
   };
 }

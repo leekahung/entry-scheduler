@@ -117,10 +117,7 @@ export function entryRoutes({
       }
 
       const at = signedInAt(req);
-      const going = (await store.list()).find(
-        (entry) =>
-          entry.id === id && (at === undefined || entry.createdAt === at),
-      );
+      const going = await store.find(id, at);
       if (!going) {
         res.status(404).json({ error: "Entry not found." });
         return;
