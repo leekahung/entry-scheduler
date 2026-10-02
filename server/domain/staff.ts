@@ -50,9 +50,8 @@ export function fromStaffValues(values: (string | number)[][]): StaffMember[] {
     return index === -1 ? "" : String(row[index] ?? "");
   };
 
-  // Keyed by address: `add` never writes a second row, but a sheet edited by
-  // hand can, and two rows disagreeing about a role must not be shown twice.
-  // The lower row is the later grant, so it supplies the details.
+  // Keyed by address, since a hand edit can repeat one; the lower, later row
+  // supplies the details.
   const members = new Map<string, StaffMember>();
   for (const row of rows) {
     const email = normalizeEmail(at(row, "email"));
@@ -61,10 +60,8 @@ export function fromStaffValues(values: (string | number)[][]): StaffMember[] {
     const seen = members.get(email);
     members.set(email, {
       email,
-      // An unreadable role is the lesser privilege, never the greater one —
-      // and so is a disagreement between two rows. Only a hand edit can put
-      // the same address on the tab twice, so "owner" has to be said by every
-      // row that mentions them, not just the last one.
+      // An unreadable or disputed role falls to staff: "owner" must be said by
+      // every row naming them.
       role: isRole(role) && seen?.role !== "staff" ? role : "staff",
       addedBy: at(row, "addedBy"),
       addedAt: at(row, "addedAt"),
@@ -80,26 +77,31 @@ export type StaffStore = {
 };
 
 /**
- * Who may use the console, kept in its own tab of the same spreadsheet.
- *
- * Read on every admin request, so the list is cached; writes are queued
- * because a whole-tab rewrite has no transaction behind it.
+ * Who may use the console, kept in its own tab.
+ * Cached since every admin request reads it; writes are queued.
  */
 export function createStaffStore(transport: SheetTransport): StaffStore {
   let cache: StaffMember[] | null = null;
   let cachedAt = 0;
   let queue: Promise<unknown> = Promise.resolve();
+  // Bumped by every write, so a read already in flight cannot cache the old
+  // list and hand a removed member their access back.
+  let generation = 0;
 
   async function load(): Promise<StaffMember[]> {
     if (cache && Date.now() - cachedAt < STAFF_CACHE_MS) return cache;
+    const at = generation;
     const members = fromStaffValues(await transport.read());
-    cache = members;
-    cachedAt = Date.now();
+    if (at === generation) {
+      cache = members;
+      cachedAt = Date.now();
+    }
     return members;
   }
 
   async function save(members: StaffMember[]): Promise<void> {
     await transport.write(toStaffValues(members));
+    generation += 1;
     cache = members;
     cachedAt = Date.now();
   }

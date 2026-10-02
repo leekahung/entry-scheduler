@@ -156,6 +156,30 @@ describe("the staff store", () => {
     vi.useRealTimers();
   });
 
+  // Otherwise someone just removed keeps their access until the cache expires.
+  it("does not let a read already in flight put a removed member back", async () => {
+    const sheet = fakeSheet(toStaffValues([member()]));
+    let release: () => void = () => {};
+    let hold = false;
+    const store = createStaffStore({
+      read: async () => {
+        const values = sheet.current();
+        if (hold) await new Promise<void>((resolve) => (release = resolve));
+        return values;
+      },
+      write: sheet.transport.write,
+    });
+
+    hold = true;
+    const inFlight = store.list();
+    hold = false;
+    expect(await store.remove("kim@clinic.org")).toBe(true);
+    release();
+    await inFlight;
+
+    await expect(store.list()).resolves.toEqual([]);
+  });
+
   it("keeps concurrent grants from overwriting each other", async () => {
     const store = createStaffStore(fakeSheet().transport);
     await Promise.all([
