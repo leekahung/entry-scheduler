@@ -219,9 +219,6 @@ Failures are announced to a screen reader assertively and everything else
 politely, through two live regions that are always in the document — a region
 that appears along with its first message may not be announced at all.
 
-On the console the messages sit top left, clear of the header's own buttons; on
-the kiosk they are centred and larger, for a screen read across a room.
-
 **What a failure says** depends on what went wrong, because "Something went
 wrong" helps nobody:
 
@@ -238,6 +235,11 @@ being removed while somebody else is acting on it is ordinary, not a bug. The
 500 case is the opposite — the server answers every one of them with
 "Something went wrong", which tells a visitor nothing they did not already
 know, so the console and the kiosk supply their own words there.
+
+The **Staff access** panel shows its failures inline rather than as a toast,
+but words them the same way. Its 404 is an address another owner has already
+removed: "That address is no longer on the list — another owner may have
+removed it."
 
 Standing state stays a banner rather than a message that clears: a server that
 cannot be reached, a month left unclosed, someone guessing at the passcode.
