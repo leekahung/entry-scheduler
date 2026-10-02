@@ -1,3 +1,4 @@
+import { isInRoom, isScheduledLater } from "../shared/queue";
 import type { AdminEntry } from "../shared/types";
 
 export type QueueSection = {
@@ -25,7 +26,7 @@ export function queueSections(
   const live = visible.filter((e) => !e.deletedAt);
   // `due` comes from the server, which also decides the order, so the split can
   // never disagree with the queue it is describing.
-  const inRoom = live.filter((e) => e.status !== "resolved" && e.due);
+  const inRoom = live.filter(isInRoom);
   return [
     {
       id: "waiting",
@@ -52,7 +53,7 @@ export function queueSections(
     {
       id: "later",
       label: "Scheduled later",
-      rows: live.filter((e) => e.status !== "resolved" && !e.due),
+      rows: live.filter(isScheduledLater),
       caption: "Appointments that are not due yet",
       empty: filtering
         ? "No later appointment matches these filters."

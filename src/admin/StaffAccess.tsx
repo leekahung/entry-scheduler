@@ -50,7 +50,10 @@ export default function StaffAccess({ passcode }: { passcode: string }) {
     error,
     setError,
     run: attempt,
-  } = useAsyncAction("That did not work.");
+  } = useAsyncAction({
+    fallback: "That did not work.",
+    gone: "That address is no longer on the list — another owner may have removed it.",
+  });
   // Each change affects someone else and cannot be undone by them, so all
   // are confirmed first.
   const [confirming, setConfirming] = useState<Pending | null>(null);

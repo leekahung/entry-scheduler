@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { isInRoom } from "../shared/queue";
 import type { AdminEntry, Status, VisitType } from "../shared/types";
 import { downloadCurrentList, downloadWorkbook } from "../shared/api";
 import ScrollToTop from "../shared/ScrollToTop";
@@ -126,7 +127,7 @@ export default function AdminPage() {
   // The whole board, unfiltered and without removed entries: a filter must
   // never look like people leaving the room.
   const onBoard = entries.filter((e) => !e.deletedAt);
-  const allInRoom = onBoard.filter((e) => e.status !== "resolved" && e.due);
+  const allInRoom = onBoard.filter(isInRoom);
   const beingHelped = allInRoom.filter((e) => e.status === "pending").length;
   // The month rolled over with last month's entries still on the board, so
   // they have not been exported yet.

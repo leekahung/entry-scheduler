@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { isInRoom } from "../shared/queue";
 import { CASE_TYPE_LABEL } from "../../server/shared/codes";
 import {
   STATUS_LABEL,
@@ -216,7 +217,7 @@ export default function QueueTable({
                     )}
                     {/* How long they have been sitting there is the number
                         staff work from; the clock time is the reference. */}
-                    {entry.status !== "resolved" && entry.due ? (
+                    {isInRoom(entry) ? (
                       <>
                         <span
                           className={

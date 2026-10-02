@@ -60,7 +60,7 @@ export default function AdminBanners({
       {monthToClose && (
         <p className={ALERT} role="status">
           <strong>{monthToClose} is not closed out yet.</strong> Entries from
-          then are still on the board. Finished ones move into the{" "}
+          then are still on the board. Finished and removed ones move into the{" "}
           {monthToClose} tab by themselves at the next change; anything still
           open stays here until someone works it.
         </p>

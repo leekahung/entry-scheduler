@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isInRoom } from "../shared/queue";
 import type { JoinedEntry, QueueEntry, VisitorIntake } from "../shared/types";
 import { fetchQueue, joinQueue } from "../shared/api";
 import CheckInForm from "../kiosk/CheckInForm";
@@ -129,9 +130,7 @@ export default function UserPage() {
 
   // Only people in the room: an appointment not yet due must not count as
   // ahead of anyone, or be named "up next".
-  const waiting = queue.filter(
-    (entry) => entry.status !== "resolved" && entry.due,
-  );
+  const waiting = queue.filter(isInRoom);
   // Matched on id and sign-in time, since numbers are reused. A device with no
   // stored time claims no entry.
   const savedCreatedAt = localStorage.getItem("entryCreatedAt");

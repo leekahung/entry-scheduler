@@ -1,3 +1,4 @@
+import { isScheduledLater } from "../shared/queue";
 import type { AdminEntry } from "../shared/types";
 import { DownloadIcon, ExternalIcon, SignOutIcon } from "./icons";
 
@@ -47,8 +48,7 @@ export default function AdminToolbar({
           <h1 className="m-0 text-title">Queue admin</h1>
           <p className="mt-1 mb-0 text-muted">
             {inRoom - beingHelped} waiting · {beingHelped} being helped ·{" "}
-            {entries.filter((e) => e.status !== "resolved" && !e.due).length}{" "}
-            scheduled later ·{" "}
+            {entries.filter(isScheduledLater).length} scheduled later ·{" "}
             {entries.filter((e) => e.status === "resolved").length} done
           </p>
           {email && (

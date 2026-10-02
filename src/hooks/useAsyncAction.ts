@@ -1,11 +1,12 @@
 import { useState } from "react";
+import { failureMessage, type ToastFailure } from "../shared/toasts";
 
 /**
- * Runs one request at a time; `pending` disables its buttons and `error`
- * prefers the server's own message.
+ * Runs one request at a time; `pending` disables its buttons and `error` is
+ * worded as the console's toasts word a failure.
  * `setError` lets a form report its own checks in the same place.
  */
-export function useAsyncAction(fallback: string) {
+export function useAsyncAction(failure: string | ToastFailure) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
@@ -17,7 +18,7 @@ export function useAsyncAction(fallback: string) {
       await action();
       return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : fallback);
+      setError(failureMessage(err, failure));
       return false;
     } finally {
       // In a finally, so a thrown action cannot leave the buttons disabled.
