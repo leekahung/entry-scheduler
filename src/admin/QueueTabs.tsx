@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-export type QueueTab = {
+type QueueTab = {
   id: string;
   label: string;
   count: number;

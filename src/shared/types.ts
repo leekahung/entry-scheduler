@@ -5,11 +5,15 @@ import type {
   Gender,
   LegalOutcome,
 } from "../../server/shared/codes";
-export const STATUSES = ["new", "pending", "resolved"] as const;
-export type Status = (typeof STATUSES)[number];
+import type { Status, VisitType } from "../../server/shared/entryStates";
 
-export const VISIT_TYPES = ["in-person", "remote"] as const;
-export type VisitType = (typeof VISIT_TYPES)[number];
+// The server's own lists, so the console offers exactly what it accepts.
+export {
+  STATUSES,
+  type Status,
+  VISIT_TYPES,
+  type VisitType,
+} from "../../server/shared/entryStates";
 
 /** Short labels for the visit-type control; staff read these at a glance. */
 export const VISIT_TYPE_LABEL: Record<VisitType, string> = {

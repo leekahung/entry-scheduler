@@ -5,13 +5,13 @@ import type {
   Gender,
   LegalOutcome,
 } from "../shared/codes.js";
+import {
+  STATUSES,
+  type Status,
+  VISIT_TYPES,
+  type VisitType,
+} from "../shared/entryStates.js";
 
-export const STATUSES = ["new", "pending", "resolved"] as const;
-export type Status = (typeof STATUSES)[number];
-
-/** How the clinic is meeting someone: in the room, or at a distance. */
-export const VISIT_TYPES = ["in-person", "remote"] as const;
-export type VisitType = (typeof VISIT_TYPES)[number];
 export const DEFAULT_VISIT_TYPE: VisitType = "in-person";
 
 /**
@@ -65,7 +65,7 @@ export function isRemoved(entry: Entry): boolean {
  * When someone joins the single shared line: their appointment time if they
  * have one, otherwise when they walked in.
  */
-export function queuedFrom(entry: Entry): string {
+function queuedFrom(entry: Entry): string {
   return entry.scheduledFor || entry.createdAt;
 }
 
