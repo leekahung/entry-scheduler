@@ -42,10 +42,21 @@ type EntryRef = { id: number; createdAt: string };
 const entryPath = ({ id, createdAt }: EntryRef, action = "") =>
   `/api/entries/${id}${action}?createdAt=${encodeURIComponent(createdAt)}`;
 
-const adminHeaders = (passcode: string) => ({
-  "Content-Type": "application/json",
-  "x-admin-passcode": passcode,
-});
+/** A request carrying the admin passcode, with `body` sent as JSON. */
+const adminFetch = (
+  passcode: string,
+  path: string,
+  method = "GET",
+  body?: unknown,
+) =>
+  fetch(path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "x-admin-passcode": passcode,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 
 export async function joinQueue(
   name: string,
@@ -76,11 +87,7 @@ export async function bookEntry(
   } & Intake,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
-    await fetch("/api/admin/entries", {
-      method: "POST",
-      headers: adminHeaders(passcode),
-      body: JSON.stringify(booking),
-    }),
+    await adminFetch(passcode, "/api/admin/entries", "POST", booking),
   );
 }
 
@@ -93,10 +100,7 @@ export type ArchiveResult = { months: string[]; entries: number };
  */
 export async function archiveMonths(passcode: string): Promise<ArchiveResult> {
   return parse<ArchiveResult>(
-    await fetch("/api/entries/archive", {
-      method: "POST",
-      headers: adminHeaders(passcode),
-    }),
+    await adminFetch(passcode, "/api/entries/archive", "POST"),
   );
 }
 
@@ -135,9 +139,7 @@ export async function signOutOfGoogle(): Promise<void> {
 }
 
 export async function fetchStaff(passcode: string): Promise<StaffList> {
-  return parse<StaffList>(
-    await fetch("/api/admin/staff", { headers: adminHeaders(passcode) }),
-  );
+  return parse<StaffList>(await adminFetch(passcode, "/api/admin/staff"));
 }
 
 export async function addStaff(
@@ -146,11 +148,7 @@ export async function addStaff(
   role: StaffRole,
 ): Promise<StaffMember> {
   return parse<StaffMember>(
-    await fetch("/api/admin/staff", {
-      method: "POST",
-      headers: adminHeaders(passcode),
-      body: JSON.stringify({ email, role }),
-    }),
+    await adminFetch(passcode, "/api/admin/staff", "POST", { email, role }),
   );
 }
 
@@ -158,10 +156,11 @@ export async function removeStaff(
   passcode: string,
   email: string,
 ): Promise<void> {
-  const res = await fetch(`/api/admin/staff/${encodeURIComponent(email)}`, {
-    method: "DELETE",
-    headers: adminHeaders(passcode),
-  });
+  const res = await adminFetch(
+    passcode,
+    `/api/admin/staff/${encodeURIComponent(email)}`,
+    "DELETE",
+  );
   await failUnlessOk(res, "Could not remove access.");
 }
 
@@ -183,10 +182,7 @@ export type PasscodeResult = {
 export async function verifyPasscode(
   passcode: string,
 ): Promise<PasscodeResult> {
-  const res = await fetch("/api/admin/verify", {
-    method: "POST",
-    headers: adminHeaders(passcode),
-  });
+  const res = await adminFetch(passcode, "/api/admin/verify", "POST");
   const remaining = res.headers.get("ratelimit-remaining");
   const body = res.ok ? await res.json().catch(() => null) : null;
   return {
@@ -207,15 +203,11 @@ export type AdminAlerts = {
 
 /** Failed sign-in attempts, so the console can warn staff someone is probing. */
 export async function fetchAdminAlerts(passcode: string): Promise<AdminAlerts> {
-  return parse<AdminAlerts>(
-    await fetch("/api/admin/alerts", { headers: adminHeaders(passcode) }),
-  );
+  return parse<AdminAlerts>(await adminFetch(passcode, "/api/admin/alerts"));
 }
 
 export async function fetchAllEntries(passcode: string): Promise<AdminEntry[]> {
-  return parse<AdminEntry[]>(
-    await fetch("/api/entries", { headers: adminHeaders(passcode) }),
-  );
+  return parse<AdminEntry[]>(await adminFetch(passcode, "/api/entries"));
 }
 
 export async function updateStatus(
@@ -225,15 +217,11 @@ export async function updateStatus(
   helpedBy: string,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
-    await fetch(entryPath(entry), {
-      method: "PATCH",
-      headers: adminHeaders(passcode),
+    await adminFetch(passcode, entryPath(entry), "PATCH", {
+      status,
       // A blank name never wipes the existing one, and going back to the queue
       // sends none: whoever clicked did not help them.
-      body: JSON.stringify({
-        status,
-        ...(helpedBy && status !== "new" ? { helpedBy } : {}),
-      }),
+      ...(helpedBy && status !== "new" ? { helpedBy } : {}),
     }),
   );
 }
@@ -256,26 +244,7 @@ export async function updateDetails(
   >,
 ): Promise<AdminEntry> {
   return parse<AdminEntry>(
-    await fetch(entryPath(entry), {
-      method: "PATCH",
-      headers: adminHeaders(passcode),
-      body: JSON.stringify(details),
-    }),
-  );
-}
-
-/** Patches only the visit type. */
-export async function updateVisitType(
-  passcode: string,
-  entry: EntryRef,
-  visitType: VisitType,
-): Promise<AdminEntry> {
-  return parse<AdminEntry>(
-    await fetch(entryPath(entry), {
-      method: "PATCH",
-      headers: adminHeaders(passcode),
-      body: JSON.stringify({ visitType }),
-    }),
+    await adminFetch(passcode, entryPath(entry), "PATCH", details),
   );
 }
 
@@ -283,10 +252,7 @@ export async function deleteEntry(
   passcode: string,
   entry: EntryRef,
 ): Promise<void> {
-  const res = await fetch(entryPath(entry), {
-    method: "DELETE",
-    headers: adminHeaders(passcode),
-  });
+  const res = await adminFetch(passcode, entryPath(entry), "DELETE");
   await failUnlessOk(res, `Could not delete entry (${res.status})`);
 }
 
@@ -295,10 +261,7 @@ export async function restoreEntry(
   passcode: string,
   entry: EntryRef,
 ): Promise<void> {
-  const res = await fetch(entryPath(entry, "/restore"), {
-    method: "POST",
-    headers: adminHeaders(passcode),
-  });
+  const res = await adminFetch(passcode, entryPath(entry, "/restore"), "POST");
   await failUnlessOk(res, `Could not restore entry (${res.status})`);
 }
 
@@ -312,11 +275,14 @@ export async function purgeEntry(
   entry: EntryRef,
   confirm: string,
 ): Promise<void> {
-  const res = await fetch(entryPath(entry, "/record"), {
-    method: "DELETE",
-    headers: adminHeaders(passcode),
-    body: JSON.stringify({ confirm }),
-  });
+  const res = await adminFetch(
+    passcode,
+    entryPath(entry, "/record"),
+    "DELETE",
+    {
+      confirm,
+    },
+  );
   await failUnlessOk(res, `Could not erase entry (${res.status})`);
 }
 
@@ -327,9 +293,7 @@ async function download(
   name: string,
   extension: string,
 ): Promise<void> {
-  const res = await fetch(path, {
-    headers: adminHeaders(passcode),
-  });
+  const res = await adminFetch(passcode, path);
   await failUnlessOk(res, `Export failed (${res.status})`);
 
   const url = URL.createObjectURL(await res.blob());

@@ -19,7 +19,6 @@ import {
   fetchAdminAlerts,
   fetchAllEntries,
   updateDetails,
-  updateVisitType,
   updateStatus,
   type AdminAlerts,
 } from "../shared/api";
@@ -213,7 +212,7 @@ export function useEntries(
           },
         },
         async () => {
-          replace(await updateVisitType(passcode, entry, visitType));
+          replace(await updateDetails(passcode, entry, { visitType }));
           // The change can move the row, and only the server decides where to.
           await refresh();
         },
