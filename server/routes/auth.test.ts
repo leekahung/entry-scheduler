@@ -1,13 +1,4 @@
-import {
-  beforeAll,
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from "vitest";
-import { createServer } from "node:http";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../app.js";
 import type { Store } from "../sheet/store.js";
@@ -17,23 +8,16 @@ import {
   signSession,
   STATE_COOKIE,
 } from "../lib/auth.js";
-import { asAdmin, emptyStore, PASSCODE } from "./routes.fixture.js";
+import { asAdmin, emptyStore, PASSCODE, testServer } from "./routes.fixture.js";
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
-// One listener per file, delegating to the current test's app: a port per
-// request or per test churned until replies reached the wrong test.
-const server = createServer((req, res) => app(req, res));
+const server = testServer(() => app);
 
 beforeEach(() => {
   store = emptyStore();
   app = createApp(store, PASSCODE);
 });
-
-beforeAll(
-  () => new Promise((ready) => server.listen(0, () => ready(undefined))),
-);
-afterAll(() => new Promise((done) => server.close(() => done(undefined))));
 
 describe("staff sign-in with Google", () => {
   const OAUTH = {

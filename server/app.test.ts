@@ -1,44 +1,29 @@
-import {
-  beforeAll,
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createServer } from "node:http";
 import request from "supertest";
+import {
+  asAdmin,
+  emptyStore,
+  PASSCODE,
+  testServer,
+} from "./routes/routes.fixture.js";
 import { createApp } from "./app.js";
 import { isLocalAddress } from "./lib/net.js";
 import { fakeSheet } from "./sheet/sheet.fixture.js";
 import { createStaffStore } from "./domain/staff.js";
-import { createStore, type Store } from "./sheet/store.js";
+import type { Store } from "./sheet/store.js";
 import { SESSION_COOKIE, signSession } from "./lib/auth.js";
-
-const PASSCODE = "test-passcode";
-const asAdmin = (req: request.Test) => req.set("x-admin-passcode", PASSCODE);
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
-// One listener per file, delegating to the current test's app: a port per
-// request or per test churned until replies reached the wrong test.
-const server = createServer((req, res) => app(req, res));
-
-const emptyStore = () => createStore(fakeSheet().transport);
+const server = testServer(() => app);
 
 beforeEach(() => {
   store = emptyStore();
   app = createApp(store, PASSCODE);
 });
-
-beforeAll(
-  () => new Promise((ready) => server.listen(0, () => ready(undefined))),
-);
-afterAll(() => new Promise((done) => server.close(() => done(undefined))));
 
 async function join(name: string, note = "") {
   const res = await request(server).post("/api/entries").send({ name, note });

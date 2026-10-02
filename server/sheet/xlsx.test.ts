@@ -2,37 +2,9 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { inflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { tabName, toXlsx } from "./xlsx.js";
-
-/** The parts of a written workbook, by name. */
-function unzip(book: Buffer): Map<string, string> {
-  const parts = new Map<string, string>();
-  // Walk the central directory rather than the local headers: it is the index
-  // a reader actually uses, so this checks the one the file will be read by.
-  const end = book.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  const count = book.readUInt16LE(end + 10);
-  let at = book.readUInt32LE(end + 16);
-  for (let i = 0; i < count; i++) {
-    const compressed = book.readUInt32LE(at + 20);
-    const nameLength = book.readUInt16LE(at + 28);
-    const extraLength = book.readUInt16LE(at + 30);
-    const commentLength = book.readUInt16LE(at + 32);
-    const offset = book.readUInt32LE(at + 42);
-    const name = book.toString("utf8", at + 46, at + 46 + nameLength);
-
-    const localNameLength = book.readUInt16LE(offset + 26);
-    const localExtraLength = book.readUInt16LE(offset + 28);
-    const start = offset + 30 + localNameLength + localExtraLength;
-    parts.set(
-      name,
-      inflateRawSync(book.subarray(start, start + compressed)).toString("utf8"),
-    );
-    at += 46 + nameLength + extraLength + commentLength;
-  }
-  return parts;
-}
+import { unzip } from "./xlsx.fixture.js";
 
 describe("the workbook writer", () => {
   it("writes one worksheet per sheet, named as given", () => {

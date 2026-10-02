@@ -1,13 +1,4 @@
-import {
-  beforeAll,
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-} from "vitest";
-import { createServer } from "node:http";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../app.js";
 import { fakeSheet } from "../sheet/sheet.fixture.js";
@@ -18,23 +9,16 @@ import {
 } from "../domain/staff.js";
 import type { Store } from "../sheet/store.js";
 import { SESSION_COOKIE, signSession } from "../lib/auth.js";
-import { asAdmin, emptyStore, PASSCODE } from "./routes.fixture.js";
+import { asAdmin, emptyStore, PASSCODE, testServer } from "./routes.fixture.js";
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
-// One listener per file, delegating to the current test's app: a port per
-// request or per test churned until replies reached the wrong test.
-const server = createServer((req, res) => app(req, res));
+const server = testServer(() => app);
 
 beforeEach(() => {
   store = emptyStore();
   app = createApp(store, PASSCODE);
 });
-
-beforeAll(
-  () => new Promise((ready) => server.listen(0, () => ready(undefined))),
-);
-afterAll(() => new Promise((done) => server.close(() => done(undefined))));
 
 async function join(name: string, note = "") {
   const res = await request(server).post("/api/entries").send({ name, note });
@@ -52,8 +36,7 @@ describe("managing who has access", () => {
 
   let staff: StaffStore;
   let withStaff: ReturnType<typeof createApp>;
-  // Its own long-lived listener, for the same reason as the shared one above.
-  const withStaffServer = createServer((req, res) => withStaff(req, res));
+  const withStaffServer = testServer(() => withStaff);
 
   const as = (email: string) =>
     `${SESSION_COOKIE}=${signSession(email, OAUTH.SESSION_SECRET)}`;
@@ -63,14 +46,6 @@ describe("managing who has access", () => {
     staff = createStaffStore(fakeSheet().transport);
     withStaff = createApp(store, PASSCODE, undefined, false, { staff });
   });
-
-  beforeAll(
-    () =>
-      new Promise((ready) => withStaffServer.listen(0, () => ready(undefined))),
-  );
-  afterAll(
-    () => new Promise((done) => withStaffServer.close(() => done(undefined))),
-  );
 
   afterEach(() => {
     for (const key of Object.keys(OAUTH)) delete process.env[key];

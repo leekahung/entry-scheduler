@@ -1,37 +1,17 @@
-import { beforeAll, afterAll, beforeEach, describe, expect, it } from "vitest";
-import { createServer } from "node:http";
-import { inflateRawSync } from "node:zlib";
+import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { createApp } from "../app.js";
 import { fakeSheet, fakeTabs } from "../sheet/sheet.fixture.js";
 import { createStore, type Store } from "../sheet/store.js";
-import { asAdmin, emptyStore, PASSCODE } from "./routes.fixture.js";
+import { asAdmin, emptyStore, PASSCODE, testServer } from "./routes.fixture.js";
 import { currentMonth, monthTab } from "../sheet/archive.js";
+import { unzip } from "../sheet/xlsx.fixture.js";
 
 /** The first worksheet's XML out of a written workbook. */
 function worksheet(book: Buffer): string {
-  const end = book.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
-  const count = book.readUInt16LE(end + 10);
-  let at = book.readUInt32LE(end + 16);
-  for (let i = 0; i < count; i++) {
-    const compressed = book.readUInt32LE(at + 20);
-    const nameLength = book.readUInt16LE(at + 28);
-    const offset = book.readUInt32LE(at + 42);
-    const name = book.toString("utf8", at + 46, at + 46 + nameLength);
-    if (name === "xl/worksheets/sheet1.xml") {
-      const start =
-        offset +
-        30 +
-        book.readUInt16LE(offset + 26) +
-        book.readUInt16LE(offset + 28);
-      return inflateRawSync(book.subarray(start, start + compressed)).toString(
-        "utf8",
-      );
-    }
-    at +=
-      46 + nameLength + book.readUInt16LE(at + 30) + book.readUInt16LE(at + 32);
-  }
-  throw new Error("No worksheet in the workbook.");
+  const sheet = unzip(book).get("xl/worksheets/sheet1.xml");
+  if (sheet === undefined) throw new Error("No worksheet in the workbook.");
+  return sheet;
 }
 
 /** Keeps supertest from decoding a binary body as text. */
@@ -44,19 +24,12 @@ const asBinary = (req: request.Test) =>
 
 let store: Store;
 let app: ReturnType<typeof createApp>;
-// One listener per file, delegating to the current test's app: a port per
-// request or per test churned until replies reached the wrong test.
-const server = createServer((req, res) => app(req, res));
+const server = testServer(() => app);
 
 beforeEach(() => {
   store = emptyStore();
   app = createApp(store, PASSCODE);
 });
-
-beforeAll(
-  () => new Promise((ready) => server.listen(0, () => ready(undefined))),
-);
-afterAll(() => new Promise((done) => server.close(() => done(undefined))));
 
 async function join(name: string, note = "") {
   const res = await request(server).post("/api/entries").send({ name, note });
